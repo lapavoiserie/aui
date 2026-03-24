@@ -1,0 +1,7 @@
+{
+  "appName": "Counter",
+  "packageName": "com.aui.counter",
+  "minSdk": 24,
+  "targetSdk": 35,
+  "compileSdk": 35
+}

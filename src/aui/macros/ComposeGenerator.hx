@@ -14,17 +14,17 @@ class ComposeGenerator {
 	static var _viewComponents:Array<String> = [];
 	static var _outputDir:String = "android/app/src/main/kotlin/com/aui/generated";
 	static var _indent:Int = 0;
+	// State fields detected on the App subclass: {name, kotlinType, defaultValue}
+	static var _stateFields:Array<{name:String, type:String, defaultValue:String}> = [];
 
 	public static function register():Void {
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
-			// Pass 1: Collect types
 			for (module in modules) {
 				switch (module) {
 					case TClassDecl(ref):
 						var cls = ref.get();
 						var fullName = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
 
-						// Check if it extends aui.App
 						var superClass = cls.superClass;
 						while (superClass != null) {
 							var superRef = superClass.t.get();
@@ -37,7 +37,6 @@ class ComposeGenerator {
 							superClass = superRef.superClass;
 						}
 
-						// Check if it extends aui.state.Observable
 						var superClass2 = cls.superClass;
 						while (superClass2 != null) {
 							var superRef = superClass2.t.get();
@@ -54,49 +53,36 @@ class ComposeGenerator {
 		});
 
 		Context.onAfterGenerate(function() {
-			if (_appClass == null) {
-				return;
-			}
+			if (_appClass == null) return;
 			generateComposeFiles();
 		});
 	}
 
 	static function generateComposeFiles():Void {
-		// Ensure output directory exists
 		ensureDir(_outputDir);
 
-		// Get the App class type info to extract body() expression
 		var appType = Context.getType(_appClass);
 		var appName = "HaxeApp";
 		var packageName = "com.haxe.app";
-
-		// Read config from aui.json if it exists
-		if (FileSystem.exists("aui.json")) {
-			try {
-				var configContent = File.getContent("aui.json");
-				var config = haxe.Json.parse(configContent);
-				if (config.appName != null) appName = config.appName;
-				if (config.packageName != null) packageName = config.packageName;
-			} catch (e:Dynamic) {
-				// Fall back to defaults
-			}
-		}
-
-		// Read full config for Gradle generation
 		var minSdk = 24;
 		var targetSdk = 35;
 		var compileSdk = 35;
+
 		if (FileSystem.exists("aui.json")) {
 			try {
-				var configContent = File.getContent("aui.json");
-				var config = haxe.Json.parse(configContent);
-				if (config.minSdk != null) minSdk = config.minSdk;
-				if (config.targetSdk != null) targetSdk = config.targetSdk;
-				if (config.compileSdk != null) compileSdk = config.compileSdk;
+				var json = haxe.Json.parse(File.getContent("aui.json"));
+				if (json.appName != null) appName = json.appName;
+				if (json.packageName != null) packageName = json.packageName;
+				if (json.minSdk != null) minSdk = json.minSdk;
+				if (json.targetSdk != null) targetSdk = json.targetSdk;
+				if (json.compileSdk != null) compileSdk = json.compileSdk;
 			} catch (e:Dynamic) {}
 		}
 
-		// Generate Android project structure if needed
+		// Collect state fields from the App subclass
+		_stateFields = collectStateFields(appType);
+
+		// Generate Gradle project if needed
 		if (!FileSystem.exists("android/build.gradle.kts")) {
 			GradleProject.generate({
 				appName: appName,
@@ -108,40 +94,102 @@ class ComposeGenerator {
 			Context.warning('[AUI] Generated Android project in android/', Context.currentPos());
 		}
 
-		// Generate MainActivity.kt
 		generateMainActivity(packageName, appName);
-
-		// Generate MainScreen.kt from body()
 		generateMainScreen(packageName, appType);
-
-		// Generate AppState.kt if there are state fields
-		generateAppState(packageName, appType);
 
 		Context.warning('[AUI] Generated Compose files in ${_outputDir}', Context.currentPos());
 	}
 
-	static function generateMainActivity(packageName:String, appName:String):Void {
-		var buf = new StringBuf();
-		buf.add('package ${packageName}\n\n');
-		buf.add('import android.os.Bundle\n');
-		buf.add('import androidx.activity.ComponentActivity\n');
-		buf.add('import androidx.activity.compose.setContent\n');
-		buf.add('import androidx.compose.material3.MaterialTheme\n');
-		buf.add('import androidx.compose.material3.Surface\n\n');
-		buf.add('class MainActivity : ComponentActivity() {\n');
-		buf.add('    override fun onCreate(savedInstanceState: Bundle?) {\n');
-		buf.add('        super.onCreate(savedInstanceState)\n');
-		buf.add('        setContent {\n');
-		buf.add('            MaterialTheme {\n');
-		buf.add('                Surface {\n');
-		buf.add('                    MainScreen()\n');
-		buf.add('                }\n');
-		buf.add('            }\n');
-		buf.add('        }\n');
-		buf.add('    }\n');
-		buf.add('}\n');
+	static function collectStateFields(appType:Type):Array<{name:String, type:String, defaultValue:String}> {
+		var fields:Array<{name:String, type:String, defaultValue:String}> = [];
 
-		File.saveContent('${_outputDir}/MainActivity.kt', buf.toString());
+		switch (appType) {
+			case TInst(ref, _):
+				var cls = ref.get();
+				for (field in cls.fields.get()) {
+					switch (field.type) {
+						case TInst(tref, params):
+							var typeName = tref.get().pack.join(".") + (tref.get().pack.length > 0 ? "." : "") + tref.get().name;
+							if (typeName == "aui.state.State" && params.length > 0) {
+								var kotlinType = haxeTypeToKotlin(params[0]);
+								// Try to get default value from field expr
+								var defVal = getDefaultForKotlinType(kotlinType);
+								var expr = field.expr();
+								if (expr != null) {
+									var extracted = extractDefaultValue(expr);
+									if (extracted != null) defVal = extracted;
+								}
+								fields.push({name: field.name, type: kotlinType, defaultValue: defVal});
+							}
+						default:
+					}
+				}
+			default:
+		}
+
+		return fields;
+	}
+
+	static function extractDefaultValue(expr:TypedExpr):Null<String> {
+		if (expr == null) return null;
+		switch (expr.expr) {
+			case TConst(c):
+				switch (c) {
+					case TInt(i): return Std.string(i);
+					case TFloat(f): return f + "f";
+					case TString(s): return '"${escapeString(s)}"';
+					case TBool(b): return b ? "true" : "false";
+					default: return null;
+				}
+			case TNew(_, _, args):
+				// new State<T>(defaultValue, name) — first arg is the default
+				if (args.length > 0) return extractDefaultValue(args[0]);
+				return null;
+			case TFunction(tf):
+				return extractDefaultValue(tf.expr);
+			case TReturn(e):
+				if (e != null) return extractDefaultValue(e);
+				return null;
+			case TBlock(exprs):
+				for (e in exprs) {
+					var v = extractDefaultValue(e);
+					if (v != null) return v;
+				}
+				return null;
+			default:
+				return null;
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// File generators
+	// -------------------------------------------------------------------------
+
+	static function generateMainActivity(packageName:String, appName:String):Void {
+		var lines = [
+			"package " + packageName,
+			"",
+			"import android.os.Bundle",
+			"import androidx.activity.ComponentActivity",
+			"import androidx.activity.compose.setContent",
+			"import androidx.compose.material3.MaterialTheme",
+			"import androidx.compose.material3.Surface",
+			"",
+			"class MainActivity : ComponentActivity() {",
+			"    override fun onCreate(savedInstanceState: Bundle?) {",
+			"        super.onCreate(savedInstanceState)",
+			"        setContent {",
+			"            MaterialTheme {",
+			"                Surface {",
+			"                    MainScreen()",
+			"                }",
+			"            }",
+			"        }",
+			"    }",
+			"}",
+			""
+		];
+		File.saveContent(_outputDir + "/MainActivity.kt", lines.join("\n"));
 	}
 
 	static function generateMainScreen(packageName:String, appType:Type):Void {
@@ -160,91 +208,57 @@ class ComposeGenerator {
 		}
 
 		var buf = new StringBuf();
-		buf.add('package ${packageName}\n\n');
-		buf.add('import androidx.compose.foundation.layout.*\n');
-		buf.add('import androidx.compose.material3.*\n');
-		buf.add('import androidx.compose.runtime.*\n');
-		buf.add('import androidx.compose.ui.Alignment\n');
-		buf.add('import androidx.compose.ui.Modifier\n');
-		buf.add('import androidx.compose.ui.unit.dp\n');
-		buf.add('import androidx.compose.ui.unit.sp\n');
-		buf.add('import androidx.compose.ui.graphics.Color\n');
-		buf.add('import androidx.compose.ui.text.font.FontWeight\n');
-		buf.add('import androidx.compose.ui.text.font.FontStyle\n');
-		buf.add('import androidx.compose.ui.text.style.TextAlign\n');
-		buf.add('import androidx.compose.ui.draw.*\n\n');
+		buf.add("package " + packageName + "\n\n");
 
-		buf.add('@Composable\n');
-		buf.add('fun MainScreen() {\n');
+		// Imports
+		var imports = [
+			"androidx.compose.foundation.layout.*",
+			"androidx.compose.foundation.rememberScrollState",
+			"androidx.compose.foundation.verticalScroll",
+			"androidx.compose.material3.*",
+			"androidx.compose.runtime.*",
+			"androidx.compose.ui.Alignment",
+			"androidx.compose.ui.Modifier",
+			"androidx.compose.ui.unit.dp",
+			"androidx.compose.ui.unit.sp",
+			"androidx.compose.ui.graphics.Color",
+			"androidx.compose.ui.text.font.FontWeight",
+			"androidx.compose.ui.text.font.FontStyle",
+			"androidx.compose.ui.text.style.TextAlign",
+			"androidx.compose.ui.text.input.PasswordVisualTransformation",
+			"androidx.compose.ui.draw.*"
+		];
+		for (imp in imports) {
+			buf.add("import " + imp + "\n");
+		}
+		buf.add("\n");
+
+		buf.add("@Composable\n");
+		buf.add("fun MainScreen() {\n");
+
+		// Emit state declarations
+		for (sf in _stateFields) {
+			buf.add("    var " + sf.name + " by remember { mutableStateOf(" + sf.defaultValue + ") }\n");
+		}
+		if (_stateFields.length > 0) {
+			buf.add("\n");
+		}
 
 		if (bodyExpr != null) {
 			_indent = 1;
-			var bodyCode = translateTypedExpr(bodyExpr);
-			buf.add(bodyCode);
+			buf.add(translateTypedExpr(bodyExpr));
 		} else {
-			buf.add('    // No body() defined\n');
 			buf.add('    Text("Hello from AUI!")\n');
 		}
 
-		buf.add('}\n');
+		buf.add("}\n");
 
-		File.saveContent('${_outputDir}/MainScreen.kt', buf.toString());
+		File.saveContent(_outputDir + "/MainScreen.kt", buf.toString());
 	}
 
-	static function generateAppState(packageName:String, appType:Type):Void {
-		var stateFields:Array<{name:String, type:String, defaultValue:String}> = [];
-
-		switch (appType) {
-			case TInst(ref, _):
-				var cls = ref.get();
-				for (field in cls.fields.get()) {
-					// Look for State<T> fields
-					switch (field.type) {
-						case TInst(tref, params):
-							var typeName = tref.get().pack.join(".") + (tref.get().pack.length > 0 ? "." : "") + tref.get().name;
-							if (typeName == "aui.state.State" && params.length > 0) {
-								var kotlinType = haxeTypeToKotlin(params[0]);
-								stateFields.push({
-									name: field.name,
-									type: kotlinType,
-									defaultValue: getDefaultForKotlinType(kotlinType)
-								});
-							}
-						default:
-					}
-				}
-			default:
-		}
-
-		if (stateFields.length == 0) {
-			return;
-		}
-
-		var buf = new StringBuf();
-		buf.add('package ${packageName}\n\n');
-		buf.add('import androidx.compose.runtime.mutableStateOf\n');
-		buf.add('import androidx.compose.runtime.getValue\n');
-		buf.add('import androidx.compose.runtime.setValue\n');
-		buf.add('import androidx.lifecycle.ViewModel\n\n');
-		buf.add('class AppState : ViewModel() {\n');
-
-		for (field in stateFields) {
-			buf.add('    var ${field.name} by mutableStateOf(${field.defaultValue})\n');
-		}
-
-		buf.add('\n    companion object {\n');
-		buf.add('        private val _instance = AppState()\n');
-		buf.add('        fun getShared(): AppState = _instance\n');
-		buf.add('    }\n');
-		buf.add('}\n');
-
-		File.saveContent('${_outputDir}/AppState.kt', buf.toString());
-	}
-
-	// --- AST Translation ---
-
-	// A modifier collected from the chain
-	static var _viewModifiers:Array<{name:String, args:Array<TypedExpr>}> = [];
+	// -------------------------------------------------------------------------
+	// AST Translation
+	// -------------------------------------------------------------------------
 
 	static function translateTypedExpr(expr:TypedExpr):String {
 		if (expr == null) return "";
@@ -270,17 +284,28 @@ class ComposeGenerator {
 				return buf.toString();
 
 			case TCall(func, args):
-				// Check if this is a modifier chain: someView.modifier(args)
+				// Check for static factory calls: Text.withState(...)
+				var staticResult = tryTranslateStaticCall(func, args);
+				if (staticResult != null) return staticResult;
+
+				// Check for modifier chain: someView.modifier(args)
 				switch (func.expr) {
 					case TField(innerExpr, fa):
 						var fieldName = getFieldName(fa);
 						if (isModifierMethod(fieldName)) {
-							// Unwrap the full modifier chain
 							var modifiers:Array<{name:String, args:Array<TypedExpr>}> = [];
 							modifiers.push({name: fieldName, args: args});
 							var baseExpr = unwrapModifierChain(innerExpr, modifiers);
-							// Now baseExpr is the TNew and modifiers has all collected modifiers (in reverse order)
 							modifiers.reverse();
+
+							// Check if base is a static call (e.g., Text.withState(...).bold())
+							switch (baseExpr.expr) {
+								case TCall(bFunc, bArgs):
+									var staticBase = tryTranslateStaticCallWithMods(bFunc, bArgs, modifiers);
+									if (staticBase != null) return staticBase;
+								default:
+							}
+
 							switch (baseExpr.expr) {
 								case TNew(classRef, _, ctorArgs):
 									var cls = classRef.get();
@@ -311,6 +336,83 @@ class ComposeGenerator {
 			default:
 				return "";
 		}
+	}
+
+	// Try to translate static method calls like Text.withState(...)
+	static function tryTranslateStaticCall(func:TypedExpr, args:Array<TypedExpr>):Null<String> {
+		switch (func.expr) {
+			case TField(_, fa):
+				var fieldName = getFieldName(fa);
+				if (fieldName == "withState" && args.length > 0) {
+					return translateTextWithState(args[0], []);
+				}
+			default:
+		}
+		return null;
+	}
+
+	static function tryTranslateStaticCallWithMods(func:TypedExpr, args:Array<TypedExpr>,
+			modifiers:Array<{name:String, args:Array<TypedExpr>}>):Null<String> {
+		switch (func.expr) {
+			case TField(_, fa):
+				var fieldName = getFieldName(fa);
+				if (fieldName == "withState" && args.length > 0) {
+					return translateTextWithState(args[0], modifiers);
+				}
+			default:
+		}
+		return null;
+	}
+
+	static function translateTextWithState(templateExpr:TypedExpr,
+			modifiers:Array<{name:String, args:Array<TypedExpr>}>):String {
+		var indent = getIndent();
+		var template = "";
+
+		switch (templateExpr.expr) {
+			case TConst(TString(s)):
+				template = s;
+			default:
+				template = translateTypedExpr(templateExpr);
+		}
+
+		// Convert {varName} → $varName for Kotlin string interpolation
+		var reg = ~/\{([^}]+)\}/g;
+		var kotlinStr = reg.map(template, function(r) {
+			return "$" + r.matched(1);
+		});
+
+		var hasBold = false;
+		var hasItalic = false;
+		for (mod in modifiers) {
+			if (mod.name == "bold") hasBold = true;
+			if (mod.name == "italic") hasItalic = true;
+		}
+		var layoutMods = buildModifierChain(modifiers);
+
+		var buf = new StringBuf();
+		buf.add(indent + "Text(\n");
+		buf.add(indent + '    text = "' + kotlinStr + '"');
+
+		for (mod in modifiers) {
+			if (mod.name == "foregroundColor" && mod.args.length > 0) {
+				buf.add(",\n" + indent + "    color = " + translateColorArg(mod.args[0]));
+			}
+		}
+		for (mod in modifiers) {
+			if (mod.name == "font" && mod.args.length > 0) {
+				var fontInfo = translateFontArg(mod.args[0]);
+				if (fontInfo.style != null) {
+					buf.add(",\n" + indent + "    style = " + fontInfo.style);
+				}
+			}
+		}
+		if (hasBold) buf.add(",\n" + indent + "    fontWeight = FontWeight.Bold");
+		if (hasItalic) buf.add(",\n" + indent + "    fontStyle = FontStyle.Italic");
+		if (layoutMods.length > 0) buf.add(",\n" + indent + "    modifier = " + layoutMods);
+
+		buf.add("\n" + indent + ")\n");
+		return buf.toString();
 	}
 
 	static function unwrapModifierChain(expr:TypedExpr, modifiers:Array<{name:String, args:Array<TypedExpr>}>):TypedExpr {
@@ -355,184 +457,390 @@ class ComposeGenerator {
 		].indexOf(name) != -1;
 	}
 
+	// -------------------------------------------------------------------------
+	// View translation
+	// -------------------------------------------------------------------------
+
 	static function translateViewWithModifiers(fullName:String, args:Array<TypedExpr>,
 			modifiers:Array<{name:String, args:Array<TypedExpr>}>):String {
 		var indent = getIndent();
-
-		// Build Modifier chain string
 		var modStr = buildModifierChain(modifiers);
-		// Collect text-specific modifiers (font, bold, etc.)
-		var textParams = extractTextParams(modifiers);
 
 		switch (fullName) {
 			case "aui.ui.Text":
 				return generateText(args, modifiers, indent);
-
 			case "aui.ui.VStack":
 				return generateContainer("Column", args, modStr, indent);
-
 			case "aui.ui.HStack":
 				return generateContainer("Row", args, modStr, indent);
-
 			case "aui.ui.ZStack":
 				return generateContainer("Box", args, modStr, indent);
-
 			case "aui.ui.Spacer":
-				if (modStr.length > 0) {
-					return '${indent}Spacer(modifier = ${modStr})\n';
-				}
-				return '${indent}Spacer(modifier = Modifier.weight(1f))\n';
-
+				if (modStr.length > 0) return indent + "Spacer(modifier = " + modStr + ")\n";
+				return indent + "Spacer(modifier = Modifier.weight(1f))\n";
 			case "aui.ui.Button":
 				return generateButton(args, modStr, indent);
-
+			case "aui.ui.Divider":
+				if (modStr.length > 0) return indent + "HorizontalDivider(modifier = " + modStr + ")\n";
+				return indent + "HorizontalDivider()\n";
+			case "aui.ui.TextField":
+				return generateTextField(args, modStr, indent);
+			case "aui.ui.Toggle":
+				return generateToggle(args, modStr, indent);
+			case "aui.ui.Slider":
+				return generateSlider(args, modStr, indent);
+			case "aui.ui.ScrollView":
+				return generateScrollView(args, modStr, indent);
+			case "aui.ui.Image":
+				return generateImage(args, modStr, indent);
+			case "aui.ui.ConditionalView":
+				return generateConditionalView(args, indent);
 			default:
-				return '${indent}// Unknown view: ${fullName}\n';
+				return indent + "// Unknown view: " + fullName + "\n";
 		}
 	}
 
 	static function generateText(args:Array<TypedExpr>, modifiers:Array<{name:String, args:Array<TypedExpr>}>,
 			indent:String):String {
 		var textContent = '""';
-		if (args.length > 0) {
-			textContent = translateTypedExpr(args[0]);
-		}
+		if (args.length > 0) textContent = translateTypedExpr(args[0]);
 
-		// Check for bold/italic
 		var hasBold = false;
 		var hasItalic = false;
 		for (mod in modifiers) {
 			if (mod.name == "bold") hasBold = true;
 			if (mod.name == "italic") hasItalic = true;
 		}
-
-		// Build Modifier chain for layout modifiers
 		var layoutMods = buildModifierChain(modifiers);
 
 		var buf = new StringBuf();
-		buf.add('${indent}Text(\n');
-		buf.add('${indent}    text = ${textContent}');
+		buf.add(indent + "Text(\n");
+		buf.add(indent + "    text = " + textContent);
 
 		for (mod in modifiers) {
 			if (mod.name == "foregroundColor" && mod.args.length > 0) {
-				buf.add(',\n${indent}    color = ${translateColorArg(mod.args[0])}');
+				buf.add(",\n" + indent + "    color = " + translateColorArg(mod.args[0]));
 			}
 		}
-
-		// Use style parameter for font (the proper Compose API)
 		for (mod in modifiers) {
 			if (mod.name == "font" && mod.args.length > 0) {
 				var fontInfo = translateFontArg(mod.args[0]);
-				if (fontInfo.style != null) {
-					buf.add(',\n${indent}    style = ${fontInfo.style}');
-				}
+				if (fontInfo.style != null) buf.add(",\n" + indent + "    style = " + fontInfo.style);
 			}
 		}
-
-		if (hasBold) {
-			buf.add(',\n${indent}    fontWeight = FontWeight.Bold');
-		}
-		if (hasItalic) {
-			buf.add(',\n${indent}    fontStyle = FontStyle.Italic');
-		}
-
+		if (hasBold) buf.add(",\n" + indent + "    fontWeight = FontWeight.Bold");
+		if (hasItalic) buf.add(",\n" + indent + "    fontStyle = FontStyle.Italic");
 		for (mod in modifiers) {
-			if (mod.name == "multilineTextAlignment" && mod.args.length > 0) {
-				buf.add(',\n${indent}    textAlign = ${translateTextAlignArg(mod.args[0])}');
-			}
+			if (mod.name == "multilineTextAlignment" && mod.args.length > 0)
+				buf.add(",\n" + indent + "    textAlign = " + translateTextAlignArg(mod.args[0]));
 		}
+		if (layoutMods.length > 0) buf.add(",\n" + indent + "    modifier = " + layoutMods);
 
-		if (layoutMods.length > 0) {
-			buf.add(',\n${indent}    modifier = ${layoutMods}');
-		}
-
-		buf.add('\n${indent})\n');
+		buf.add("\n" + indent + ")\n");
 		return buf.toString();
 	}
 
 	static function generateContainer(composeName:String, args:Array<TypedExpr>, modStr:String, indent:String):String {
 		var buf = new StringBuf();
 
-		// Find the content array argument
 		var contentArg:Null<TypedExpr> = null;
+		var spacingArg:Null<TypedExpr> = null;
 		for (arg in args) {
 			switch (arg.expr) {
-				case TArrayDecl(_):
-					contentArg = arg;
+				case TArrayDecl(_): contentArg = arg;
+				case TConst(TInt(_)), TConst(TFloat(_)): spacingArg = arg;
 				default:
 			}
 		}
 
-		// Build parameters
 		var params = new Array<String>();
-		if (modStr.length > 0) {
-			params.push('modifier = ${modStr}');
-		}
+		if (modStr.length > 0) params.push("modifier = " + modStr);
 		if (composeName == "Column") {
-			params.push('horizontalAlignment = Alignment.CenterHorizontally');
+			params.push("horizontalAlignment = Alignment.CenterHorizontally");
 		} else if (composeName == "Row") {
-			params.push('verticalAlignment = Alignment.CenterVertically');
+			params.push("verticalAlignment = Alignment.CenterVertically");
+			if (spacingArg != null) {
+				params.push("horizontalArrangement = Arrangement.spacedBy(" + translateTypedExpr(spacingArg) + ".dp)");
+			}
 		}
 
 		if (params.length > 0) {
-			buf.add('${indent}${composeName}(\n');
+			buf.add(indent + composeName + "(\n");
 			for (i in 0...params.length) {
-				buf.add('${indent}    ${params[i]}');
-				if (i < params.length - 1) buf.add(',');
-				buf.add('\n');
+				buf.add(indent + "    " + params[i]);
+				if (i < params.length - 1) buf.add(",");
+				buf.add("\n");
 			}
-			buf.add('${indent}) {\n');
+			buf.add(indent + ") {\n");
 		} else {
-			buf.add('${indent}${composeName} {\n');
+			buf.add(indent + composeName + " {\n");
 		}
 
-		// Translate children
 		if (contentArg != null) {
 			switch (contentArg.expr) {
 				case TArrayDecl(elements):
 					_indent++;
-					for (element in elements) {
-						buf.add(translateTypedExpr(element));
-					}
+					for (element in elements) buf.add(translateTypedExpr(element));
 					_indent--;
 				default:
 			}
 		}
 
-		buf.add('${indent}}\n');
+		buf.add(indent + "}\n");
 		return buf.toString();
 	}
 
 	static function generateButton(args:Array<TypedExpr>, modStr:String, indent:String):String {
 		var buf = new StringBuf();
 		var label = '""';
-		if (args.length > 0) {
-			label = translateTypedExpr(args[0]);
-		}
+		if (args.length > 0) label = translateTypedExpr(args[0]);
 
-		buf.add('${indent}Button(\n');
-		buf.add('${indent}    onClick = { /* action */ }');
-		if (modStr.length > 0) {
-			buf.add(',\n${indent}    modifier = ${modStr}');
-		}
-		buf.add('\n${indent}) {\n');
-		buf.add('${indent}    Text(${label})\n');
-		buf.add('${indent}}\n');
-		return buf.toString();
-	}
-
-	// --- Modifier Translation ---
-
-	static function buildModifierChain(modifiers:Array<{name:String, args:Array<TypedExpr>}>):String {
-		var parts = new Array<String>();
-
-		for (mod in modifiers) {
-			var part = translateSingleModifier(mod.name, mod.args);
-			if (part.length > 0) {
-				parts.push(part);
+		// Try to translate the second argument as a StateAction
+		var actionCode = "{ }";
+		if (args.length >= 2) {
+			var sa = translateStateAction(args[1]);
+			if (sa != null) {
+				actionCode = "{ " + sa + " }";
 			}
 		}
 
+		buf.add(indent + "Button(\n");
+		buf.add(indent + "    onClick = " + actionCode);
+		if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+		buf.add("\n" + indent + ") {\n");
+		buf.add(indent + "    Text(" + label + ")\n");
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateTextField(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+
+		var placeholder = '""';
+		if (args.length > 0) placeholder = translateTypedExpr(args[0]);
+
+		// Second arg is the State<String> binding
+		var stateName:Null<String> = null;
+		if (args.length >= 2) stateName = extractStateFieldName(args[1]);
+
+		if (stateName != null) {
+			buf.add(indent + "OutlinedTextField(\n");
+			buf.add(indent + "    value = " + stateName + ",\n");
+			buf.add(indent + "    onValueChange = { " + stateName + " = it },\n");
+			buf.add(indent + "    label = { Text(" + placeholder + ") }");
+			if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+			else buf.add(",\n" + indent + "    modifier = Modifier.fillMaxWidth()");
+			buf.add("\n" + indent + ")\n");
+		} else {
+			buf.add(indent + "OutlinedTextField(\n");
+			buf.add(indent + '    value = "",\n');
+			buf.add(indent + "    onValueChange = { },\n");
+			buf.add(indent + "    label = { Text(" + placeholder + ") }");
+			if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+			buf.add("\n" + indent + ")\n");
+		}
+
+		return buf.toString();
+	}
+
+	static function generateToggle(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+
+		var label = '""';
+		if (args.length > 0) label = translateTypedExpr(args[0]);
+
+		var stateName:Null<String> = null;
+		if (args.length >= 2) stateName = extractStateFieldName(args[1]);
+
+		buf.add(indent + "Row(\n");
+		buf.add(indent + "    verticalAlignment = Alignment.CenterVertically");
+		if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+		else buf.add(",\n" + indent + "    modifier = Modifier.fillMaxWidth()");
+		buf.add("\n" + indent + ") {\n");
+		buf.add(indent + "    Text(text = " + label + ", modifier = Modifier.weight(1f))\n");
+		if (stateName != null) {
+			buf.add(indent + "    Switch(checked = " + stateName + ", onCheckedChange = { " + stateName + " = it })\n");
+		} else {
+			buf.add(indent + "    Switch(checked = false, onCheckedChange = { })\n");
+		}
+		buf.add(indent + "}\n");
+
+		return buf.toString();
+	}
+
+	static function generateSlider(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var indent2 = indent;
+		var buf = new StringBuf();
+
+		var stateName:Null<String> = null;
+		if (args.length >= 1) stateName = extractStateFieldName(args[0]);
+
+		var mod = modStr.length > 0 ? modStr : "Modifier.fillMaxWidth()";
+		if (stateName != null) {
+			buf.add(indent + "Slider(\n");
+			buf.add(indent + "    value = " + stateName + ".toFloat(),\n");
+			buf.add(indent + "    onValueChange = { " + stateName + " = it },\n");
+			buf.add(indent + "    modifier = " + mod + "\n");
+			buf.add(indent + ")\n");
+		} else {
+			buf.add(indent + "Slider(\n");
+			buf.add(indent + "    value = 0f,\n");
+			buf.add(indent + "    onValueChange = { },\n");
+			buf.add(indent + "    modifier = " + mod + "\n");
+			buf.add(indent + ")\n");
+		}
+
+		return buf.toString();
+	}
+
+	static function generateScrollView(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+		var mod = modStr.length > 0 ? modStr + ".verticalScroll(rememberScrollState())"
+			: "Modifier.fillMaxSize().verticalScroll(rememberScrollState())";
+
+		buf.add(indent + "Column(\n");
+		buf.add(indent + "    modifier = " + mod + "\n");
+		buf.add(indent + ") {\n");
+
+		// Children are in the first array arg
+		for (arg in args) {
+			switch (arg.expr) {
+				case TArrayDecl(elements):
+					_indent++;
+					for (element in elements) buf.add(translateTypedExpr(element));
+					_indent--;
+				default:
+			}
+		}
+
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateImage(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var name = '""';
+		if (args.length > 0) name = translateTypedExpr(args[0]);
+
+		var buf = new StringBuf();
+		buf.add(indent + "// Image: " + name + "\n");
+		buf.add(indent + "Icon(\n");
+		buf.add(indent + "    imageVector = Icons.Default.Star,\n");
+		buf.add(indent + '    contentDescription = ' + name);
+		if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+		buf.add("\n" + indent + ")\n");
+		return buf.toString();
+	}
+
+	static function generateConditionalView(args:Array<TypedExpr>, indent:String):String {
+		var buf = new StringBuf();
+
+		var stateName:Null<String> = null;
+		if (args.length >= 1) stateName = extractStateFieldName(args[0]);
+		var condVar = stateName != null ? stateName : "false";
+
+		buf.add(indent + "if (" + condVar + ") {\n");
+		if (args.length >= 2) {
+			_indent++;
+			buf.add(translateTypedExpr(args[1]));
+			_indent--;
+		}
+		buf.add(indent + "}");
+
+		if (args.length >= 3) {
+			buf.add(" else {\n");
+			_indent++;
+			buf.add(translateTypedExpr(args[2]));
+			_indent--;
+			buf.add(indent + "}");
+		}
+		buf.add("\n");
+
+		return buf.toString();
+	}
+
+	// -------------------------------------------------------------------------
+	// StateAction translation
+	// -------------------------------------------------------------------------
+
+	// Translates a StateAction expression to Kotlin code (without braces)
+	// e.g. count.inc() → "count++"
+	static function translateStateAction(expr:TypedExpr):Null<String> {
+		switch (expr.expr) {
+			case TCall(func, args):
+				switch (func.expr) {
+					case TField(receiver, fa):
+						var methodName = getFieldName(fa);
+						var stateName = extractStateFieldName(receiver);
+						if (stateName == null) return null;
+
+						switch (methodName) {
+							case "inc":
+								if (args.length > 0) {
+									var amount = translateTypedExpr(args[0]);
+									if (amount != "null" && amount != "") return stateName + " += " + amount;
+								}
+								return stateName + "++";
+							case "dec":
+								if (args.length > 0) {
+									var amount = translateTypedExpr(args[0]);
+									if (amount != "null" && amount != "") return stateName + " -= " + amount;
+								}
+								return stateName + "--";
+							case "setTo":
+								if (args.length > 0) {
+									var value = translateTypedExpr(args[0]);
+									return stateName + " = " + value;
+								}
+								return null;
+							case "tog":
+								return stateName + " = !" + stateName;
+							case "appendAction":
+								if (args.length > 0) {
+									var value = translateTypedExpr(args[0]);
+									return stateName + " = " + stateName + " + " + value;
+								}
+								return null;
+							default:
+								return null;
+						}
+					default:
+				}
+			default:
+		}
+		return null;
+	}
+
+	// Extract the name of a State field from a typed expression
+	// Handles: this.fieldName, fieldName (local)
+	static function extractStateFieldName(expr:TypedExpr):Null<String> {
+		switch (expr.expr) {
+			case TField(_, fa):
+				var name = getFieldName(fa);
+				// Check if it's a known state field
+				for (sf in _stateFields) {
+					if (sf.name == name) return name;
+				}
+				return null;
+			case TLocal(v):
+				for (sf in _stateFields) {
+					if (sf.name == v.name) return v.name;
+				}
+				return null;
+			default:
+				return null;
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Modifier translation
+	// -------------------------------------------------------------------------
+
+	static function buildModifierChain(modifiers:Array<{name:String, args:Array<TypedExpr>}>):String {
+		var parts = new Array<String>();
+		for (mod in modifiers) {
+			var part = translateSingleModifier(mod.name, mod.args);
+			if (part.length > 0) parts.push(part);
+		}
 		if (parts.length == 0) return "";
 		return "Modifier" + parts.join("");
 	}
@@ -542,87 +850,55 @@ class ComposeGenerator {
 			case "padding":
 				if (args.length > 0) {
 					var value = translateTypedExpr(args[0]);
-					if (value == "null" || value == "") return '.padding(16.dp)';
-					return '.padding(${value}.dp)';
+					if (value == "null" || value == "") return ".padding(16.dp)";
+					return ".padding(" + value + ".dp)";
 				}
-				return '.padding(16.dp)';
-
+				return ".padding(16.dp)";
 			case "background":
-				if (args.length > 0) {
-					return '.background(${translateColorArg(args[0])})';
-				}
+				if (args.length > 0) return ".background(" + translateColorArg(args[0]) + ")";
 				return "";
-
 			case "cornerRadius":
-				if (args.length > 0) {
-					var value = translateTypedExpr(args[0]);
-					return '.clip(RoundedCornerShape(${value}.dp))';
-				}
+				if (args.length > 0) return ".clip(RoundedCornerShape(" + translateTypedExpr(args[0]) + ".dp))";
 				return "";
-
 			case "opacity":
-				if (args.length > 0) {
-					var value = translateTypedExpr(args[0]);
-					return '.alpha(${value}f)';
-				}
+				if (args.length > 0) return ".alpha(" + translateTypedExpr(args[0]) + "f)";
 				return "";
-
 			case "frame":
 				var parts = new Array<String>();
-				if (args.length > 0) parts.push('width = ${translateTypedExpr(args[0])}.dp');
-				if (args.length > 1) parts.push('height = ${translateTypedExpr(args[1])}.dp');
-				if (parts.length > 0) return '.size(${parts.join(", ")})';
+				if (args.length > 0) parts.push("width = " + translateTypedExpr(args[0]) + ".dp");
+				if (args.length > 1) parts.push("height = " + translateTypedExpr(args[1]) + ".dp");
+				if (parts.length > 0) return ".size(" + parts.join(", ") + ")";
 				return "";
-
 			case "offset":
-				if (args.length >= 2) {
-					return '.offset(x = ${translateTypedExpr(args[0])}.dp, y = ${translateTypedExpr(args[1])}.dp)';
-				}
+				if (args.length >= 2)
+					return ".offset(x = " + translateTypedExpr(args[0]) + ".dp, y = " + translateTypedExpr(args[1]) + ".dp)";
 				return "";
-
 			case "blur":
-				if (args.length > 0) {
-					return '.blur(${translateTypedExpr(args[0])}.dp)';
-				}
+				if (args.length > 0) return ".blur(" + translateTypedExpr(args[0]) + ".dp)";
 				return "";
-
 			case "scaleEffect":
-				if (args.length > 0) {
-					return '.scale(${translateTypedExpr(args[0])}f)';
-				}
+				if (args.length > 0) return ".scale(" + translateTypedExpr(args[0]) + "f)";
 				return "";
-
 			case "rotationEffect":
-				if (args.length > 0) {
-					return '.rotate(${translateTypedExpr(args[0])}f)';
-				}
+				if (args.length > 0) return ".rotate(" + translateTypedExpr(args[0]) + "f)";
 				return "";
-
 			case "hidden":
-				return '.alpha(0f)';
-
+				return ".alpha(0f)";
 			case "disabled":
-				// Disabled is typically handled at the component level, not via Modifier
 				return "";
-
 			case "shadow":
-				return '.shadow(elevation = 4.dp)';
-
+				return ".shadow(elevation = 4.dp)";
 			case "border":
 				if (args.length > 0) {
 					var color = translateColorArg(args[0]);
 					var width = args.length > 1 ? translateTypedExpr(args[1]) : "1";
-					return '.border(${width}.dp, ${color})';
+					return ".border(" + width + ".dp, " + color + ")";
 				}
 				return "";
-
-			// Text-specific modifiers handled in generateText, not in Modifier chain
-			case "font", "bold", "italic", "foregroundColor", "lineLimit",
-				"multilineTextAlignment":
-				return "";
-
+			case "font", "bold", "italic", "foregroundColor", "lineLimit", "multilineTextAlignment":
+				return ""; // Handled in generateText
 			default:
-				return '/* ${name} */';
+				return "/* " + name + " */";
 		}
 	}
 
@@ -640,11 +916,14 @@ class ComposeGenerator {
 		return params;
 	}
 
+	// -------------------------------------------------------------------------
+	// Argument translators
+	// -------------------------------------------------------------------------
+
 	static function translateColorArg(expr:TypedExpr):String {
 		switch (expr.expr) {
 			case TField(_, fa):
-				var name = getFieldName(fa);
-				switch (name) {
+				switch (getFieldName(fa)) {
 					case "Red": return "Color.Red";
 					case "Blue": return "Color.Blue";
 					case "Green": return "Color.Green";
@@ -665,8 +944,7 @@ class ComposeGenerator {
 	static function translateFontArg(expr:TypedExpr):{fontSize:Null<String>, style:Null<String>} {
 		switch (expr.expr) {
 			case TField(_, fa):
-				var name = getFieldName(fa);
-				switch (name) {
+				switch (getFieldName(fa)) {
 					case "DisplayLarge": return {fontSize: "57.sp", style: "MaterialTheme.typography.displayLarge"};
 					case "DisplayMedium": return {fontSize: "45.sp", style: "MaterialTheme.typography.displayMedium"};
 					case "DisplaySmall": return {fontSize: "36.sp", style: "MaterialTheme.typography.displaySmall"};
@@ -692,8 +970,7 @@ class ComposeGenerator {
 	static function translateTextAlignArg(expr:TypedExpr):String {
 		switch (expr.expr) {
 			case TField(_, fa):
-				var name = getFieldName(fa);
-				switch (name) {
+				switch (getFieldName(fa)) {
 					case "Start": return "TextAlign.Start";
 					case "Center": return "TextAlign.Center";
 					case "End": return "TextAlign.End";
@@ -704,11 +981,13 @@ class ComposeGenerator {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Helpers
+	// -------------------------------------------------------------------------
+
 	static function escapeString(s:String):String {
 		return StringTools.replace(StringTools.replace(s, "\\", "\\\\"), '"', '\\"');
 	}
-
-	// --- Helpers ---
 
 	static function haxeTypeToKotlin(type:Type):String {
 		switch (type) {
@@ -742,9 +1021,7 @@ class ComposeGenerator {
 
 	static function getIndent():String {
 		var buf = new StringBuf();
-		for (i in 0..._indent) {
-			buf.add("    ");
-		}
+		for (i in 0..._indent) buf.add("    ");
 		return buf.toString();
 	}
 
@@ -754,9 +1031,7 @@ class ComposeGenerator {
 			var current = "";
 			for (part in parts) {
 				current += part + "/";
-				if (!FileSystem.exists(current)) {
-					FileSystem.createDirectory(current);
-				}
+				if (!FileSystem.exists(current)) FileSystem.createDirectory(current);
 			}
 		}
 	}
