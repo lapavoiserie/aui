@@ -16,6 +16,11 @@ class ComposeGenerator {
 	static var _indent:Int = 0;
 	// State fields detected on the App subclass: {name, kotlinType, defaultValue}
 	static var _stateFields:Array<{name:String, type:String, defaultValue:String}> = [];
+	// Navigation routes collected during AST walking
+	static var _navRoutes:Array<{id:String, bodyExpr:TypedExpr}> = [];
+	static var _nextRouteId:Int = 0;
+	static var _hasNavigation:Bool = false;
+	static var _hasTabView:Bool = false;
 
 	public static function register():Void {
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
@@ -207,14 +212,28 @@ class ComposeGenerator {
 			default:
 		}
 
+		// Reset navigation state
+		_navRoutes = [];
+		_nextRouteId = 0;
+		_hasNavigation = false;
+		_hasTabView = false;
+
+		// Pre-scan for navigation elements
+		if (bodyExpr != null) {
+			scanForNavigation(bodyExpr);
+		}
+
 		var buf = new StringBuf();
 		buf.add("package " + packageName + "\n\n");
 
-		// Imports
 		var imports = [
 			"androidx.compose.foundation.layout.*",
+			"androidx.compose.foundation.lazy.LazyColumn",
+			"androidx.compose.foundation.lazy.items",
 			"androidx.compose.foundation.rememberScrollState",
 			"androidx.compose.foundation.verticalScroll",
+			"androidx.compose.material.icons.Icons",
+			"androidx.compose.material.icons.filled.*",
 			"androidx.compose.material3.*",
 			"androidx.compose.runtime.*",
 			"androidx.compose.ui.Alignment",
@@ -222,26 +241,31 @@ class ComposeGenerator {
 			"androidx.compose.ui.unit.dp",
 			"androidx.compose.ui.unit.sp",
 			"androidx.compose.ui.graphics.Color",
+			"androidx.compose.ui.graphics.vector.ImageVector",
 			"androidx.compose.ui.text.font.FontWeight",
 			"androidx.compose.ui.text.font.FontStyle",
 			"androidx.compose.ui.text.style.TextAlign",
 			"androidx.compose.ui.text.input.PasswordVisualTransformation",
 			"androidx.compose.ui.draw.*"
 		];
-		for (imp in imports) {
-			buf.add("import " + imp + "\n");
+		if (_hasNavigation) {
+			imports.push("androidx.navigation.compose.NavHost");
+			imports.push("androidx.navigation.compose.composable");
+			imports.push("androidx.navigation.compose.rememberNavController");
 		}
+		for (imp in imports) buf.add("import " + imp + "\n");
 		buf.add("\n");
 
 		buf.add("@Composable\n");
 		buf.add("fun MainScreen() {\n");
 
-		// Emit state declarations
 		for (sf in _stateFields) {
 			buf.add("    var " + sf.name + " by remember { mutableStateOf(" + sf.defaultValue + ") }\n");
 		}
-		if (_stateFields.length > 0) {
-			buf.add("\n");
+		if (_stateFields.length > 0) buf.add("\n");
+
+		if (_hasNavigation) {
+			buf.add("    val navController = rememberNavController()\n\n");
 		}
 
 		if (bodyExpr != null) {
@@ -254,6 +278,41 @@ class ComposeGenerator {
 		buf.add("}\n");
 
 		File.saveContent(_outputDir + "/MainScreen.kt", buf.toString());
+	}
+
+	// Pre-scan the AST for NavigationStack/NavigationLink to set up routes
+	static function scanForNavigation(expr:TypedExpr):Void {
+		if (expr == null) return;
+		switch (expr.expr) {
+			case TNew(classRef, _, args):
+				var cls = classRef.get();
+				var fullName = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
+				if (fullName == "aui.ui.NavigationStack") {
+					_hasNavigation = true;
+				}
+				if (fullName == "aui.ui.TabView") {
+					_hasTabView = true;
+				}
+				if (fullName == "aui.ui.NavigationLink" && args.length >= 2) {
+					var routeId = "screen_" + _nextRouteId++;
+					_navRoutes.push({id: routeId, bodyExpr: args[1]});
+				}
+				for (arg in args) scanForNavigation(arg);
+			case TCall(func, args):
+				scanForNavigation(func);
+				for (arg in args) scanForNavigation(arg);
+			case TBlock(exprs):
+				for (e in exprs) scanForNavigation(e);
+			case TFunction(tf):
+				scanForNavigation(tf.expr);
+			case TReturn(e):
+				if (e != null) scanForNavigation(e);
+			case TField(e, _):
+				scanForNavigation(e);
+			case TArrayDecl(exprs):
+				for (e in exprs) scanForNavigation(e);
+			default:
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -495,6 +554,18 @@ class ComposeGenerator {
 				return generateImage(args, modStr, indent);
 			case "aui.ui.ConditionalView":
 				return generateConditionalView(args, indent);
+			case "aui.ui.NavigationStack":
+				return generateNavigationStack(args, modStr, indent);
+			case "aui.ui.NavigationLink":
+				return generateNavigationLink(args, modStr, indent);
+			case "aui.ui.TabView":
+				return generateTabView(args, modStr, indent);
+			case "aui.ui.ForEach":
+				return generateForEach(args, indent);
+			case "aui.ui.Section":
+				return generateSection(args, modStr, indent);
+			case "aui.ui.LazyColumn":
+				return generateLazyColumn(args, modStr, indent);
 			default:
 				return indent + "// Unknown view: " + fullName + "\n";
 		}
@@ -756,6 +827,254 @@ class ComposeGenerator {
 		buf.add("\n");
 
 		return buf.toString();
+	}
+
+	// -------------------------------------------------------------------------
+	// Navigation & list views
+	// -------------------------------------------------------------------------
+
+	static function generateNavigationStack(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+
+		buf.add(indent + "NavHost(\n");
+		buf.add(indent + '    navController = navController,\n');
+		buf.add(indent + '    startDestination = "home"');
+		if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+		buf.add("\n" + indent + ") {\n");
+
+		// Home route contains the root content
+		buf.add(indent + '    composable("home") {\n');
+		if (args.length > 0) {
+			_indent += 2;
+			buf.add(translateTypedExpr(args[0]));
+			_indent -= 2;
+		}
+		buf.add(indent + "    }\n");
+
+		// Additional routes from NavigationLinks
+		for (route in _navRoutes) {
+			buf.add(indent + '    composable("' + route.id + '") {\n');
+			_indent += 2;
+			buf.add(translateTypedExpr(route.bodyExpr));
+			_indent -= 2;
+			buf.add(indent + "    }\n");
+		}
+
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateNavigationLink(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+		var label = '""';
+		if (args.length > 0) label = translateTypedExpr(args[0]);
+
+		// Find the route ID for this NavigationLink
+		var routeId = "home";
+		if (args.length >= 2) {
+			for (route in _navRoutes) {
+				// Match by expression identity (same position in source)
+				if (route.bodyExpr == args[1]) {
+					routeId = route.id;
+					break;
+				}
+			}
+		}
+
+		buf.add(indent + "Button(\n");
+		buf.add(indent + '    onClick = { navController.navigate("' + routeId + '") }');
+		if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
+		buf.add("\n" + indent + ") {\n");
+		buf.add(indent + "    Text(" + label + ")\n");
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateTabView(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+
+		// Collect Tab constructors from the array arg
+		var tabs:Array<{title:String, icon:String, bodyExpr:TypedExpr}> = [];
+		for (arg in args) {
+			switch (arg.expr) {
+				case TArrayDecl(elements):
+					for (el in elements) {
+						switch (el.expr) {
+							case TNew(classRef, _, tabArgs):
+								var cls = classRef.get();
+								var name = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
+								if (name == "aui.ui.Tab" && tabArgs.length >= 3) {
+									tabs.push({
+										title: translateTypedExpr(tabArgs[0]),
+										icon: extractStringValue(tabArgs[1]),
+										bodyExpr: tabArgs[2]
+									});
+								}
+							default:
+						}
+					}
+				default:
+			}
+		}
+
+		if (tabs.length == 0) return indent + "// Empty TabView\n";
+
+		buf.add(indent + "var selectedTab by remember { mutableStateOf(0) }\n\n");
+		buf.add(indent + "Scaffold(\n");
+		buf.add(indent + "    bottomBar = {\n");
+		buf.add(indent + "        NavigationBar {\n");
+		for (i in 0...tabs.length) {
+			var tab = tabs[i];
+			var iconName = mapIconName(tab.icon);
+			buf.add(indent + "            NavigationBarItem(\n");
+			buf.add(indent + "                selected = selectedTab == " + i + ",\n");
+			buf.add(indent + "                onClick = { selectedTab = " + i + " },\n");
+			buf.add(indent + "                icon = { Icon(Icons.Filled." + iconName + ', contentDescription = ' + tab.title + ") },\n");
+			buf.add(indent + "                label = { Text(" + tab.title + ") }\n");
+			buf.add(indent + "            )\n");
+		}
+		buf.add(indent + "        }\n");
+		buf.add(indent + "    }\n");
+		buf.add(indent + ") { innerPadding ->\n");
+		buf.add(indent + "    when (selectedTab) {\n");
+		for (i in 0...tabs.length) {
+			buf.add(indent + "        " + i + " -> {\n");
+			_indent += 3;
+			var savedIndent = _indent;
+			buf.add(indent + "            Column(modifier = Modifier.padding(innerPadding)) {\n");
+			_indent += 4;
+			buf.add(translateTypedExpr(tabs[i].bodyExpr));
+			_indent = savedIndent;
+			buf.add(indent + "            }\n");
+			_indent -= 3;
+			buf.add(indent + "        }\n");
+		}
+		buf.add(indent + "    }\n");
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateForEach(args:Array<TypedExpr>, indent:String):String {
+		var buf = new StringBuf();
+
+		if (args.length < 2) return indent + "// ForEach: missing arguments\n";
+
+		// First arg: the state/collection to iterate
+		var stateName = extractStateFieldName(args[0]);
+		var collectionExpr = stateName != null ? stateName : "emptyList<Any>()";
+
+		// Second arg: the builder function
+		var paramName = "item";
+		var builderBody:Null<TypedExpr> = null;
+
+		switch (args[1].expr) {
+			case TFunction(tf):
+				if (tf.args.length > 0) {
+					paramName = tf.args[0].v.name;
+				}
+				builderBody = tf.expr;
+			default:
+		}
+
+		buf.add(indent + collectionExpr + ".forEachIndexed { index, " + paramName + " ->\n");
+		if (builderBody != null) {
+			_indent++;
+			buf.add(translateTypedExpr(builderBody));
+			_indent--;
+		}
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateSection(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+
+		// Find header (string arg) and content (array arg)
+		var header:Null<String> = null;
+		var contentArg:Null<TypedExpr> = null;
+		for (arg in args) {
+			switch (arg.expr) {
+				case TConst(TString(s)): header = s;
+				case TArrayDecl(_): contentArg = arg;
+				default:
+			}
+		}
+
+		if (header != null) {
+			buf.add(indent + "Text(\n");
+			buf.add(indent + '    text = "' + escapeString(header) + '",\n');
+			buf.add(indent + "    style = MaterialTheme.typography.titleMedium,\n");
+			buf.add(indent + "    color = MaterialTheme.colorScheme.primary,\n");
+			buf.add(indent + "    modifier = Modifier.padding(vertical = 8.dp)\n");
+			buf.add(indent + ")\n");
+		}
+
+		if (contentArg != null) {
+			switch (contentArg.expr) {
+				case TArrayDecl(elements):
+					for (element in elements) {
+						buf.add(translateTypedExpr(element));
+					}
+				default:
+			}
+		}
+
+		if (header != null) {
+			buf.add(indent + "HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))\n");
+		}
+
+		return buf.toString();
+	}
+
+	static function generateLazyColumn(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+		var mod = modStr.length > 0 ? modStr : "Modifier.fillMaxSize()";
+
+		buf.add(indent + "LazyColumn(\n");
+		buf.add(indent + "    modifier = " + mod + "\n");
+		buf.add(indent + ") {\n");
+
+		for (arg in args) {
+			switch (arg.expr) {
+				case TArrayDecl(elements):
+					for (element in elements) {
+						buf.add(indent + "    item {\n");
+						_indent += 2;
+						buf.add(translateTypedExpr(element));
+						_indent -= 2;
+						buf.add(indent + "    }\n");
+					}
+				default:
+			}
+		}
+
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function extractStringValue(expr:TypedExpr):String {
+		switch (expr.expr) {
+			case TConst(TString(s)): return s;
+			default: return "";
+		}
+	}
+
+	static function mapIconName(icon:String):String {
+		switch (icon) {
+			case "house", "home": return "Home";
+			case "gear", "settings": return "Settings";
+			case "person", "profile": return "Person";
+			case "star", "favorite": return "Star";
+			case "search": return "Search";
+			case "list": return "List";
+			case "info": return "Info";
+			case "add", "plus": return "Add";
+			case "edit": return "Edit";
+			case "delete", "trash": return "Delete";
+			case "email", "mail": return "Email";
+			case "phone", "call": return "Phone";
+			default: return "Star";
+		}
 	}
 
 	// -------------------------------------------------------------------------
