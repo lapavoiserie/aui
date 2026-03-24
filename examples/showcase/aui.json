@@ -1,0 +1,7 @@
+{
+  "appName": "AUI Showcase",
+  "packageName": "com.aui.showcase",
+  "minSdk": 24,
+  "targetSdk": 35,
+  "compileSdk": 35
+}

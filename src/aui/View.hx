@@ -171,15 +171,62 @@ class View {
 		return this;
 	}
 
+	// Layout extras
+	public function fillMaxWidth():View {
+		modifierChain.push(FillMaxWidth);
+		return this;
+	}
+
+	public function fillMaxHeight():View {
+		modifierChain.push(FillMaxHeight);
+		return this;
+	}
+
+	public function fillMaxSize():View {
+		modifierChain.push(FillMaxSize);
+		return this;
+	}
+
+	public function paddingHorizontal(value:Float):View {
+		modifierChain.push(PaddingHorizontal(value));
+		return this;
+	}
+
+	public function paddingVertical(value:Float):View {
+		modifierChain.push(PaddingVertical(value));
+		return this;
+	}
+
 	// Navigation & Presentation
 	public function navigationTitle(title:String):View {
 		modifierChain.push(NavigationTitle(title));
 		return this;
 	}
 
+	public function sheet(isPresented:aui.state.State<Bool>, content:View):View {
+		modifierChain.push(Sheet(isPresented, content));
+		return this;
+	}
+
+	public function alert(title:String, isPresented:aui.state.State<Bool>, ?message:String):View {
+		modifierChain.push(Alert(title, isPresented, message));
+		return this;
+	}
+
+	// Animation
+	public function animation(?curve:aui.modifiers.ViewModifier.AnimationCurve):View {
+		modifierChain.push(Animation(curve != null ? curve : aui.modifiers.ViewModifier.AnimationCurve.Default));
+		return this;
+	}
+
 	// Accessibility
 	public function accessibilityLabel(label:String):View {
 		modifierChain.push(AccessibilityLabel(label));
+		return this;
+	}
+
+	public function accessibilityHint(hint:String):View {
+		modifierChain.push(AccessibilityHint(hint));
 		return this;
 	}
 }

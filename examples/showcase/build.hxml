@@ -1,0 +1,6 @@
+-cp src
+-cp ../../src
+-D jvm
+--jvm build/app-logic.jar
+--macro aui.macros.ComposeGenerator.register()
+--main Showcase

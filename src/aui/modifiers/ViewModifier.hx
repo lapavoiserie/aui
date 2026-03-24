@@ -1,11 +1,18 @@
 package aui.modifiers;
 
 import aui.View;
+import aui.state.State;
+import aui.state.StateAction;
 
 enum ViewModifier {
 	// Layout
 	Padding(?value:Float);
+	PaddingHorizontal(value:Float);
+	PaddingVertical(value:Float);
 	Frame(?width:Float, ?height:Float, ?maxWidth:Float, ?maxHeight:Float, ?alignment:Alignment);
+	FillMaxWidth;
+	FillMaxHeight;
+	FillMaxSize;
 	Offset(x:Float, y:Float);
 	AspectRatio(?ratio:Float, ?contentMode:ContentMode);
 
@@ -43,11 +50,17 @@ enum ViewModifier {
 	Disabled(isDisabled:Bool);
 	Hidden;
 
-	// Navigation & Presentation
+	// Presentation
+	Sheet(isPresented:State<Bool>, content:View);
+	Alert(title:String, isPresented:State<Bool>, ?message:String);
 	NavigationTitle(title:String);
+
+	// Animation
+	Animation(curve:AnimationCurve);
 
 	// Accessibility
 	AccessibilityLabel(label:String);
+	AccessibilityHint(hint:String);
 }
 
 enum ColorValue {
@@ -115,4 +128,14 @@ enum ShapeType {
 	RoundedRectangle(radius:Float);
 	Circle;
 	Capsule;
+}
+
+enum AnimationCurve {
+	Default;
+	EaseIn;
+	EaseOut;
+	EaseInOut;
+	Spring;
+	Linear;
+	Bouncy;
 }

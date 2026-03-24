@@ -246,6 +246,11 @@ class ComposeGenerator {
 			"androidx.compose.ui.text.font.FontStyle",
 			"androidx.compose.ui.text.style.TextAlign",
 			"androidx.compose.ui.text.input.PasswordVisualTransformation",
+			"androidx.compose.foundation.background",
+			"androidx.compose.foundation.border",
+			"androidx.compose.foundation.clickable",
+			"androidx.compose.foundation.shape.RoundedCornerShape",
+			"androidx.compose.foundation.shape.CircleShape",
 			"androidx.compose.ui.draw.*"
 		];
 		if (_hasNavigation) {
@@ -504,7 +509,9 @@ class ComposeGenerator {
 
 	static function isModifierMethod(name:String):Bool {
 		return [
-			"padding", "frame", "offset", "aspectRatio",
+			"padding", "paddingHorizontal", "paddingVertical",
+			"frame", "fillMaxWidth", "fillMaxHeight", "fillMaxSize",
+			"offset", "aspectRatio",
 			"font", "bold", "italic", "lineLimit", "multilineTextAlignment",
 			"foregroundColor", "background", "opacity", "cornerRadius",
 			"clipShape", "shadow", "blur", "scaleEffect", "rotationEffect",
@@ -512,7 +519,8 @@ class ComposeGenerator {
 			"border", "overlay",
 			"onTapGesture", "onLongPressGesture", "onAppear", "onDisappear",
 			"disabled", "hidden",
-			"navigationTitle", "accessibilityLabel"
+			"sheet", "alert", "navigationTitle", "animation",
+			"accessibilityLabel", "accessibilityHint"
 		].indexOf(name) != -1;
 	}
 
@@ -525,50 +533,88 @@ class ComposeGenerator {
 		var indent = getIndent();
 		var modStr = buildModifierChain(modifiers);
 
+		// Handle presentation modifiers (sheet, alert) as wrappers
+		var prefix = "";
+		var suffix = "";
+		for (mod in modifiers) {
+			if (mod.name == "sheet" && mod.args.length >= 2) {
+				var stateName = extractStateFieldName(mod.args[0]);
+				if (stateName != null) {
+					prefix += indent + "if (" + stateName + ") {\n";
+					prefix += indent + "    ModalBottomSheet(onDismissRequest = { " + stateName + " = false }) {\n";
+					_indent += 2;
+					prefix += translateTypedExpr(mod.args[1]);
+					_indent -= 2;
+					prefix += indent + "    }\n";
+					prefix += indent + "}\n";
+				}
+			}
+			if (mod.name == "alert" && mod.args.length >= 2) {
+				var title = translateTypedExpr(mod.args[0]);
+				var stateName = extractStateFieldName(mod.args[1]);
+				var message = mod.args.length >= 3 ? translateTypedExpr(mod.args[2]) : "null";
+				if (stateName != null) {
+					prefix += indent + "if (" + stateName + ") {\n";
+					prefix += indent + "    AlertDialog(\n";
+					prefix += indent + "        onDismissRequest = { " + stateName + " = false },\n";
+					prefix += indent + "        title = { Text(" + title + ") },\n";
+					if (message != "null") {
+						prefix += indent + "        text = { Text(" + message + ") },\n";
+					}
+					prefix += indent + '        confirmButton = { TextButton(onClick = { ' + stateName
+						+ ' = false }) { Text("OK") } }\n';
+					prefix += indent + "    )\n";
+					prefix += indent + "}\n";
+				}
+			}
+		}
+
+		var viewCode = "";
 		switch (fullName) {
 			case "aui.ui.Text":
-				return generateText(args, modifiers, indent);
+				viewCode = generateText(args, modifiers, indent);
 			case "aui.ui.VStack":
-				return generateContainer("Column", args, modStr, indent);
+				viewCode = generateContainer("Column", args, modStr, indent);
 			case "aui.ui.HStack":
-				return generateContainer("Row", args, modStr, indent);
+				viewCode = generateContainer("Row", args, modStr, indent);
 			case "aui.ui.ZStack":
-				return generateContainer("Box", args, modStr, indent);
+				viewCode = generateContainer("Box", args, modStr, indent);
 			case "aui.ui.Spacer":
-				if (modStr.length > 0) return indent + "Spacer(modifier = " + modStr + ")\n";
-				return indent + "Spacer(modifier = Modifier.weight(1f))\n";
+				viewCode = modStr.length > 0 ? indent + "Spacer(modifier = " + modStr + ")\n"
+					: indent + "Spacer(modifier = Modifier.weight(1f))\n";
 			case "aui.ui.Button":
-				return generateButton(args, modStr, indent);
+				viewCode = generateButton(args, modStr, indent);
 			case "aui.ui.Divider":
-				if (modStr.length > 0) return indent + "HorizontalDivider(modifier = " + modStr + ")\n";
-				return indent + "HorizontalDivider()\n";
+				viewCode = modStr.length > 0 ? indent + "HorizontalDivider(modifier = " + modStr + ")\n"
+					: indent + "HorizontalDivider()\n";
 			case "aui.ui.TextField":
-				return generateTextField(args, modStr, indent);
+				viewCode = generateTextField(args, modStr, indent);
 			case "aui.ui.Toggle":
-				return generateToggle(args, modStr, indent);
+				viewCode = generateToggle(args, modStr, indent);
 			case "aui.ui.Slider":
-				return generateSlider(args, modStr, indent);
+				viewCode = generateSlider(args, modStr, indent);
 			case "aui.ui.ScrollView":
-				return generateScrollView(args, modStr, indent);
+				viewCode = generateScrollView(args, modStr, indent);
 			case "aui.ui.Image":
-				return generateImage(args, modStr, indent);
+				viewCode = generateImage(args, modStr, indent);
 			case "aui.ui.ConditionalView":
-				return generateConditionalView(args, indent);
+				viewCode = generateConditionalView(args, indent);
 			case "aui.ui.NavigationStack":
-				return generateNavigationStack(args, modStr, indent);
+				viewCode = generateNavigationStack(args, modStr, indent);
 			case "aui.ui.NavigationLink":
-				return generateNavigationLink(args, modStr, indent);
+				viewCode = generateNavigationLink(args, modStr, indent);
 			case "aui.ui.TabView":
-				return generateTabView(args, modStr, indent);
+				viewCode = generateTabView(args, modStr, indent);
 			case "aui.ui.ForEach":
-				return generateForEach(args, indent);
+				viewCode = generateForEach(args, indent);
 			case "aui.ui.Section":
-				return generateSection(args, modStr, indent);
+				viewCode = generateSection(args, modStr, indent);
 			case "aui.ui.LazyColumn":
-				return generateLazyColumn(args, modStr, indent);
+				viewCode = generateLazyColumn(args, modStr, indent);
 			default:
-				return indent + "// Unknown view: " + fullName + "\n";
+				viewCode = indent + "// Unknown view: " + fullName + "\n";
 		}
+		return prefix + viewCode;
 	}
 
 	static function generateText(args:Array<TypedExpr>, modifiers:Array<{name:String, args:Array<TypedExpr>}>,
@@ -1214,8 +1260,56 @@ class ComposeGenerator {
 					return ".border(" + width + ".dp, " + color + ")";
 				}
 				return "";
+			case "fillMaxWidth":
+				return ".fillMaxWidth()";
+			case "fillMaxHeight":
+				return ".fillMaxHeight()";
+			case "fillMaxSize":
+				return ".fillMaxSize()";
+			case "paddingHorizontal":
+				if (args.length > 0) return ".padding(horizontal = " + translateTypedExpr(args[0]) + ".dp)";
+				return "";
+			case "paddingVertical":
+				if (args.length > 0) return ".padding(vertical = " + translateTypedExpr(args[0]) + ".dp)";
+				return "";
+			case "aspectRatio":
+				if (args.length > 0) {
+					var ratio = translateTypedExpr(args[0]);
+					if (ratio == "null") return ".aspectRatio(1f)";
+					return ".aspectRatio(" + ratio + "f)";
+				}
+				return ".aspectRatio(1f)";
+			case "clipShape":
+				// Shape arg is an enum — need to check what shape
+				return ".clip(RoundedCornerShape(8.dp))";
+			case "brightness":
+				return ""; // Compose handles via ColorMatrix — skip for now
+			case "contrast":
+				return "";
+			case "saturation":
+				return "";
+			case "grayscale":
+				return "";
+			case "onTapGesture":
+				return ".clickable { }";
+			case "onLongPressGesture":
+				return "";
+			case "onAppear":
+				return ""; // Handled separately via LaunchedEffect
+			case "onDisappear":
+				return "";
+			case "animation":
+				return ".animateContentSize()";
 			case "font", "bold", "italic", "foregroundColor", "lineLimit", "multilineTextAlignment":
 				return ""; // Handled in generateText
+			case "sheet", "alert":
+				return ""; // Handled as wrapper, not modifier chain
+			case "navigationTitle":
+				return ""; // Handled at Scaffold level
+			case "accessibilityLabel":
+				return ""; // Handled via semantics
+			case "accessibilityHint":
+				return "";
 			default:
 				return "/* " + name + " */";
 		}
@@ -1250,6 +1344,9 @@ class ComposeGenerator {
 					case "Black": return "Color.Black";
 					case "White": return "Color.White";
 					case "Gray": return "Color.Gray";
+					case "Purple": return "Color(0xFF9C27B0)";
+					case "Pink": return "Color(0xFFE91E63)";
+					case "Orange": return "Color(0xFFFF9800)";
 					case "Transparent": return "Color.Transparent";
 					case "Primary": return "MaterialTheme.colorScheme.primary";
 					case "Secondary": return "MaterialTheme.colorScheme.secondary";
