@@ -1,0 +1,7 @@
+{
+  "appName": "Hello AUI",
+  "packageName": "com.aui.helloworld",
+  "minSdk": 24,
+  "targetSdk": 35,
+  "compileSdk": 35
+}

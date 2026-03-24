@@ -1,0 +1,15 @@
+build/
+*.class
+*.jar
+.idea/
+*.iml
+.claude/
+
+# Android generated (per-project)
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/android/gradle/wrapper/gradle-wrapper.jar
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
