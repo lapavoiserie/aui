@@ -111,28 +111,90 @@ class ComposeGenerator {
 		switch (appType) {
 			case TInst(ref, _):
 				var cls = ref.get();
+
+				// First, collect state field names and types
 				for (field in cls.fields.get()) {
 					switch (field.type) {
 						case TInst(tref, params):
 							var typeName = tref.get().pack.join(".") + (tref.get().pack.length > 0 ? "." : "") + tref.get().name;
 							if (typeName == "aui.state.State" && params.length > 0) {
 								var kotlinType = haxeTypeToKotlin(params[0]);
-								// Try to get default value from field expr
-								var defVal = getDefaultForKotlinType(kotlinType);
-								var expr = field.expr();
-								if (expr != null) {
-									var extracted = extractDefaultValue(expr);
-									if (extracted != null) defVal = extracted;
-								}
-								fields.push({name: field.name, type: kotlinType, defaultValue: defVal});
+								fields.push({name: field.name, type: kotlinType, defaultValue: getDefaultForKotlinType(kotlinType)});
 							}
 						default:
+					}
+				}
+
+				// Scan constructor for `new State<T>(defaultVal, name)` to extract defaults
+				var ctor = cls.constructor;
+				if (ctor != null) {
+					var ctorExpr = ctor.get().expr();
+					if (ctorExpr != null) {
+						scanConstructorForDefaults(ctorExpr, fields);
 					}
 				}
 			default:
 		}
 
 		return fields;
+	}
+
+	static function scanConstructorForDefaults(expr:TypedExpr, fields:Array<{name:String, type:String, defaultValue:String}>):Void {
+		if (expr == null) return;
+		switch (expr.expr) {
+			case TFunction(tf):
+				scanConstructorForDefaults(tf.expr, fields);
+			case TBlock(exprs):
+				for (e in exprs) {
+					scanConstructorForDefaults(e, fields);
+				}
+			case TBinop(op, e1, e2):
+				// Look for: this.fieldName = new State<T>(defaultVal, name)
+				var fieldName:Null<String> = null;
+				switch (e1.expr) {
+					case TField(_, fa): fieldName = getFieldName(fa);
+					default:
+				}
+				if (fieldName != null) {
+					var newExpr = findNewState(e2);
+					if (newExpr != null) {
+						var found = false;
+						for (i in 0...fields.length) {
+							if (fields[i].name == fieldName) {
+								fields[i] = {name: fields[i].name, type: fields[i].type, defaultValue: newExpr};
+								found = true;
+								break;
+							}
+						}
+					}
+				}
+				scanConstructorForDefaults(e2, fields);
+			default:
+		}
+	}
+
+	// Recursively search for `new State<T>(default, name)` and extract default
+	static function findNewState(expr:TypedExpr):Null<String> {
+		if (expr == null) return null;
+		switch (expr.expr) {
+			case TNew(classRef, _, args):
+				var cls = classRef.get();
+				var name = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
+				if (name == "aui.state.State" && args.length >= 1) {
+				return extractDefaultValue(args[0]);
+				}
+				return null;
+			case TBlock(exprs):
+				for (e in exprs) {
+					var r = findNewState(e);
+					if (r != null) return r;
+				}
+				return null;
+			case TReturn(e):
+				return findNewState(e);
+			default:
+				return null;
+		}
 	}
 
 	static function extractDefaultValue(expr:TypedExpr):Null<String> {
@@ -611,6 +673,10 @@ class ComposeGenerator {
 				viewCode = generateSection(args, modStr, indent);
 			case "aui.ui.LazyColumn":
 				viewCode = generateLazyColumn(args, modStr, indent);
+			case "aui.ui.ProgressView":
+				viewCode = generateProgressView(args, modStr, indent);
+			case "aui.ui.Card":
+				viewCode = generateCard(args, modStr, indent);
 			default:
 				viewCode = indent + "// Unknown view: " + fullName + "\n";
 		}
@@ -1090,6 +1156,40 @@ class ComposeGenerator {
 						_indent -= 2;
 						buf.add(indent + "    }\n");
 					}
+				default:
+			}
+		}
+
+		buf.add(indent + "}\n");
+		return buf.toString();
+	}
+
+	static function generateProgressView(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var stateName:Null<String> = null;
+		if (args.length >= 1) stateName = extractStateFieldName(args[0]);
+
+		var mod = modStr.length > 0 ? modStr : "Modifier";
+		if (stateName != null) {
+			return indent + "LinearProgressIndicator(\n" + indent + "    progress = { " + stateName + ".toFloat() },\n" + indent
+				+ "    modifier = " + mod + ".fillMaxWidth()\n" + indent + ")\n";
+		}
+		return indent + "CircularProgressIndicator(" + (modStr.length > 0 ? "modifier = " + modStr : "") + ")\n";
+	}
+
+	static function generateCard(args:Array<TypedExpr>, modStr:String, indent:String):String {
+		var buf = new StringBuf();
+		var mod = modStr.length > 0 ? modStr + ".fillMaxWidth()" : "Modifier.fillMaxWidth()";
+
+		buf.add(indent + "Card(\n");
+		buf.add(indent + "    modifier = " + mod + "\n");
+		buf.add(indent + ") {\n");
+
+		for (arg in args) {
+			switch (arg.expr) {
+				case TArrayDecl(elements):
+					_indent++;
+					for (element in elements) buf.add(translateTypedExpr(element));
+					_indent--;
 				default:
 			}
 		}

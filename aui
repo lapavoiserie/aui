@@ -1,0 +1,19 @@
+#!/bin/sh
+# AUI CLI launcher
+# Usage: ./aui build, ./aui run, ./aui init <name>
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+JAR="$SCRIPT_DIR/build/aui-cli.jar"
+
+if [ ! -f "$JAR" ]; then
+    echo "Building AUI CLI..."
+    cd "$SCRIPT_DIR"
+    haxe -cp tools -cp src --main tools.cli.CLI -D jvm --jvm build/aui-cli.jar
+fi
+
+JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home 2>/dev/null)}"
+if [ -z "$JAVA_HOME" ]; then
+    java -jar "$JAR" "$@" "$(pwd)"
+else
+    "$JAVA_HOME/bin/java" -jar "$JAR" "$@" "$(pwd)"
+fi

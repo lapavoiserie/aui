@@ -8,42 +8,32 @@ class Build {
 	static var verbose:Bool = false;
 	static var release:Bool = false;
 	static var runAfterBuild:Bool = false;
-	static var device:Bool = false;
+	static var cwd:String = "";
 
-	public static function run(args:Array<String>, cwd:String):Void {
+	public static function run(args:Array<String>, workDir:String):Void {
+		cwd = workDir;
 		for (arg in args) {
 			switch (arg) {
-				case "--verbose":
-					verbose = true;
-				case "--release":
-					release = true;
-				case "--run":
-					runAfterBuild = true;
-				case "--device":
-					device = true;
+				case "--verbose": verbose = true;
+				case "--release": release = true;
+				case "--run": runAfterBuild = true;
 			}
 		}
 
-		Sys.setCwd(cwd);
-
-		var config = loadConfig(cwd);
-
+		var config = loadConfig();
 		log("Building AUI project: " + config.appName);
 
-		// Stage 1: Haxe compilation (JVM jar + Compose Kotlin via macros)
 		log("\n[1/3] Compiling Haxe...");
-		if (!runHaxe(cwd)) {
+		if (!runHaxe()) {
 			Sys.println("Error: Haxe compilation failed");
 			Sys.exit(1);
 		}
 
-		// Stage 2: Ensure Gradle wrapper exists
 		log("[2/3] Preparing Android project...");
-		ensureGradleWrapper(cwd);
+		ensureGradleWrapper();
 
-		// Stage 3: Gradle build
 		log("[3/3] Building Android APK...");
-		if (!runGradle(cwd)) {
+		if (!runGradle()) {
 			Sys.println("Error: Gradle build failed");
 			Sys.exit(1);
 		}
@@ -53,148 +43,113 @@ class Build {
 		Sys.println("\nBuild successful!");
 		Sys.println("APK: " + apkPath);
 
-		if (runAfterBuild) {
-			installAndRun(cwd, config, apkPath);
-		}
+		if (runAfterBuild) installAndRun(config, apkPath);
 	}
 
-	static function loadConfig(cwd:String):ProjectConfig {
+	static function loadConfig():ProjectConfig {
 		var configPath = cwd + "/aui.json";
 		if (FileSystem.exists(configPath)) {
 			try {
-				var content = File.getContent(configPath);
-				var json = haxe.Json.parse(content);
+				var json = haxe.Json.parse(File.getContent(configPath));
 				return {
 					appName: json.appName != null ? json.appName : "HaxeApp",
-					packageName: json.packageName != null ? json.packageName : "com.haxe.app",
-					minSdk: json.minSdk != null ? json.minSdk : 24,
-					targetSdk: json.targetSdk != null ? json.targetSdk : 35,
-					compileSdk: json.compileSdk != null ? json.compileSdk : 35
+					packageName: json.packageName != null ? json.packageName : "com.haxe.app"
 				};
 			} catch (e:Dynamic) {}
 		}
-
-		return {
-			appName: "HaxeApp",
-			packageName: "com.haxe.app",
-			minSdk: 24,
-			targetSdk: 35,
-			compileSdk: 35
-		};
+		return {appName: "HaxeApp", packageName: "com.haxe.app"};
 	}
 
-	static function runHaxe(cwd:String):Bool {
+	static function runHaxe():Bool {
 		if (!FileSystem.exists(cwd + "/build.hxml")) {
 			Sys.println("Error: build.hxml not found");
 			return false;
 		}
-		return runCommand("haxe", ["build.hxml"]) == 0;
+		return shell("cd " + shellEscape(cwd) + " && haxe build.hxml") == 0;
 	}
 
-	static function ensureGradleWrapper(cwd:String):Void {
+	static function ensureGradleWrapper():Void {
 		var androidDir = cwd + "/android";
 		var gradlewJar = androidDir + "/gradle/wrapper/gradle-wrapper.jar";
 
 		if (!FileSystem.exists(gradlewJar)) {
 			log("  Bootstrapping Gradle wrapper...");
-
-			// Try to find a cached Gradle installation
-			var home = Sys.getEnv("HOME");
-			var gradleBin = findCachedGradle(home);
-
+			var gradleBin = findCachedGradle();
 			if (gradleBin != null) {
-				Sys.setCwd(androidDir);
-				runCommand(gradleBin, ["wrapper", "--gradle-version", "8.11.1"]);
-				Sys.setCwd(cwd);
+				shell("cd " + shellEscape(androidDir) + " && " + shellEscape(gradleBin) + " wrapper --gradle-version 8.11.1");
 			} else {
-				// Check if gradle is in PATH
-				var result = runCommand("gradle", ["wrapper", "--gradle-version", "8.11.1"]);
-				if (result != 0) {
+				if (shell("cd " + shellEscape(androidDir) + " && gradle wrapper --gradle-version 8.11.1") != 0) {
 					Sys.println("Warning: Could not bootstrap Gradle wrapper.");
-					Sys.println("Please install Gradle or run 'gradle wrapper' in android/");
 				}
 			}
 		}
 	}
 
-	static function findCachedGradle(home:String):Null<String> {
+	static function findCachedGradle():Null<String> {
+		var home = Sys.getEnv("HOME");
 		if (home == null) return null;
-
-		// Look for cached Gradle 8.11.1
 		var wrapperDir = home + "/.gradle/wrapper/dists";
 		if (!FileSystem.exists(wrapperDir)) return null;
-
 		try {
 			for (entry in FileSystem.readDirectory(wrapperDir)) {
-				if (StringTools.startsWith(entry, "gradle-8.11.1")) {
+				if (StringTools.startsWith(entry, "gradle-8.")) {
 					var distDir = wrapperDir + "/" + entry;
 					for (sub in FileSystem.readDirectory(distDir)) {
-						var binPath = distDir + "/" + sub + "/gradle-8.11.1/bin/gradle";
-						if (FileSystem.exists(binPath)) {
-							return binPath;
+						var innerDir = distDir + "/" + sub;
+						if (FileSystem.isDirectory(innerDir)) {
+							for (gradleDir in FileSystem.readDirectory(innerDir)) {
+								var binPath = innerDir + "/" + gradleDir + "/bin/gradle";
+								if (FileSystem.exists(binPath)) return binPath;
+							}
 						}
 					}
 				}
 			}
 		} catch (e:Dynamic) {}
-
 		return null;
 	}
 
-	static function runGradle(cwd:String):Bool {
+	static function runGradle():Bool {
 		var androidDir = cwd + "/android";
 		var task = release ? "assembleRelease" : "assembleDebug";
-
-		Sys.setCwd(androidDir);
-		var result = runCommand("./gradlew", [task]);
-		Sys.setCwd(cwd);
-
-		return result == 0;
+		shell("chmod +x " + shellEscape(androidDir + "/gradlew"));
+		return shell("cd " + shellEscape(androidDir) + " && ./gradlew " + task) == 0;
 	}
 
-	static function installAndRun(cwd:String, config:ProjectConfig, apkPath:String):Void {
+	static function installAndRun(config:ProjectConfig, apkPath:String):Void {
 		log("\nInstalling and running...");
-
-		if (!FileSystem.exists(apkPath)) {
-			Sys.println("Error: APK not found at " + apkPath);
+		var adb = findAdb();
+		if (shell(shellEscape(adb) + " install -r " + shellEscape(apkPath)) != 0) {
+			Sys.println("Error: Install failed. Is a device/emulator connected?");
 			return;
 		}
-
-		if (runCommand("adb", ["install", "-r", apkPath]) != 0) {
-			Sys.println("Error: Failed to install APK. Is a device/emulator connected?");
-			return;
-		}
-
 		var activity = config.packageName + "/" + config.packageName + ".MainActivity";
-		runCommand("adb", ["shell", "am", "start", "-n", activity]);
-
+		shell(shellEscape(adb) + " shell am start -n " + activity);
 		Sys.println("App launched!");
 	}
 
-	static function runCommand(cmd:String, args:Array<String>):Int {
-		if (verbose) {
-			Sys.println("  > " + cmd + " " + args.join(" "));
+	static function findAdb():String {
+		var home = Sys.getEnv("HOME");
+		if (home != null) {
+			var adb = home + "/Library/Android/sdk/platform-tools/adb";
+			if (FileSystem.exists(adb)) return adb;
 		}
-
-		try {
-			var process = new Process(cmd, args);
-			var exitCode = process.exitCode();
-
-			if (verbose || exitCode != 0) {
-				var stdout = process.stdout.readAll().toString();
-				var stderr = process.stderr.readAll().toString();
-				if (stdout.length > 0) Sys.println(stdout);
-				if (stderr.length > 0) Sys.println(stderr);
-			}
-
-			process.close();
-			return exitCode;
-		} catch (e:Dynamic) {
-			if (verbose) {
-				Sys.println("Error running: " + cmd + " - " + Std.string(e));
-			}
-			return 1;
+		var androidHome = Sys.getEnv("ANDROID_HOME");
+		if (androidHome != null && androidHome != "") {
+			var adb = androidHome + "/platform-tools/adb";
+			if (FileSystem.exists(adb)) return adb;
 		}
+		return "adb";
+	}
+
+	static function shell(cmd:String):Int {
+		if (verbose) Sys.println("  > " + cmd);
+		var exitCode = Sys.command(cmd);
+		return exitCode;
+	}
+
+	static function shellEscape(s:String):String {
+		return "'" + StringTools.replace(s, "'", "'\\''") + "'";
 	}
 
 	static function log(msg:String):Void {
@@ -204,8 +159,5 @@ class Build {
 
 typedef ProjectConfig = {
 	appName:String,
-	packageName:String,
-	minSdk:Int,
-	targetSdk:Int,
-	compileSdk:Int
+	packageName:String
 };

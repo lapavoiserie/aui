@@ -25,11 +25,11 @@ class CLI {
 			case "clean":
 				Clean.run(cwd);
 			case "version":
-				Sys.println('aui ${VERSION}');
+				Sys.println("aui " + VERSION);
 			case "help":
 				printUsage();
 			default:
-				Sys.println('Unknown command: ${command}');
+				Sys.println("Unknown command: " + command);
 				printUsage();
 		}
 	}
@@ -47,23 +47,20 @@ class CLI {
 	}
 
 	static function printUsage():Void {
-		Sys.println('
-AUI - Create native Android apps in Haxe (v${VERSION})
-
-Usage: aui <command> [options]
-
-Commands:
-  init <name>     Create a new AUI project
-  build           Build the Android app
-  run             Build and run on device/emulator
-  clean           Remove build artifacts
-  version         Show version
-  help            Show this help
-
-Build options:
-  --release       Build in release mode
-  --device        Build for physical device
-  --verbose       Show detailed output
-');
+		Sys.println("AUI - Create native Android apps in Haxe (v" + VERSION + ")");
+		Sys.println("");
+		Sys.println("Usage: aui <command> [options]");
+		Sys.println("");
+		Sys.println("Commands:");
+		Sys.println("  init <name>     Create a new AUI project");
+		Sys.println("  build           Build the Android app");
+		Sys.println("  run             Build and run on device/emulator");
+		Sys.println("  clean           Remove build artifacts");
+		Sys.println("  version         Show version");
+		Sys.println("  help            Show this help");
+		Sys.println("");
+		Sys.println("Build options:");
+		Sys.println("  --release       Build in release mode");
+		Sys.println("  --verbose       Show detailed output");
 	}
 }
