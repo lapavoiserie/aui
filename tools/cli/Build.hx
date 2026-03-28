@@ -144,7 +144,7 @@ class Build {
 
 	static function shell(cmd:String):Int {
 		if (verbose) Sys.println("  > " + cmd);
-		var exitCode = Sys.command(cmd);
+		var exitCode = Sys.command("/bin/sh", ["-c", cmd]);
 		return exitCode;
 	}
 
