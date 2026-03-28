@@ -38,6 +38,33 @@ class TodoApp extends App {
 		new TodoApp();
 	}
 
+	// Helper: creates a task card with done/undo toggle
+	function taskItem(title:String, done:aui.state.State<Bool>, color:ColorValue):View {
+		return new ConditionalView(done,
+			new Card([
+				new HStack(8, [
+					new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
+					new Text(title).foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
+					new Spacer(),
+					new Button("Undo", done.tog())
+				]).padding(12)
+			]).opacity(0.5),
+			new Card([
+				new HStack(8, [
+					new Text("  ").background(color).cornerRadius(4).padding(4),
+					new Text(title).font(FontStyle.BodyLarge),
+					new Spacer(),
+					new Button("Done", done.tog())
+				]).padding(12)
+			])
+		);
+	}
+
+	// Helper: section header
+	function sectionTitle(title:String):View {
+		return new Text(title).font(FontStyle.TitleMedium).foregroundColor(ColorValue.Primary).padding(8);
+	}
+
 	override public function body():View {
 		return new TabView([
 			// ---- TASKS TAB ----
@@ -50,127 +77,15 @@ class TodoApp extends App {
 					new Spacer()
 				]).fillMaxWidth(),
 				new Divider(),
-
-				// --- Work section ---
 				new Section("Work", [
-					// Task 1
-					new ConditionalView(task1Done,
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
-								new Text("Design new landing page").foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Undo", task1Done.tog())
-							]).padding(12)
-						]).opacity(0.5),
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Primary).cornerRadius(4).padding(4),
-								new Text("Design new landing page").font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Done", task1Done.tog())
-							]).padding(12)
-						])
-					),
-					// Task 2
-					new ConditionalView(task2Done,
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
-								new Text("Review pull requests").foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Undo", task2Done.tog())
-							]).padding(12)
-						]).opacity(0.5),
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Primary).cornerRadius(4).padding(4),
-								new Text("Review pull requests").font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Done", task2Done.tog())
-							]).padding(12)
-						])
-					),
-					// Task 3
-					new ConditionalView(task3Done,
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
-								new Text("Update dependencies").foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Undo", task3Done.tog())
-							]).padding(12)
-						]).opacity(0.5),
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Primary).cornerRadius(4).padding(4),
-								new Text("Update dependencies").font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Done", task3Done.tog())
-							]).padding(12)
-						])
-					)
+					taskItem("Design new landing page", task1Done, ColorValue.Primary),
+					taskItem("Review pull requests", task2Done, ColorValue.Primary),
+					taskItem("Update dependencies", task3Done, ColorValue.Primary)
 				]),
-
-				// --- Personal section ---
 				new Section("Personal", [
-					// Task 4
-					new ConditionalView(task4Done,
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
-								new Text("Buy groceries").foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Undo", task4Done.tog())
-							]).padding(12)
-						]).opacity(0.5),
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Orange).cornerRadius(4).padding(4),
-								new Text("Buy groceries").font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Done", task4Done.tog())
-							]).padding(12)
-						])
-					),
-					// Task 5
-					new ConditionalView(task5Done,
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
-								new Text("Go for a run").foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Undo", task5Done.tog())
-							]).padding(12)
-						]).opacity(0.5),
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Orange).cornerRadius(4).padding(4),
-								new Text("Go for a run").font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Done", task5Done.tog())
-							]).padding(12)
-						])
-					),
-					// Task 6
-					new ConditionalView(task6Done,
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Green).cornerRadius(4).padding(4),
-								new Text("Read a chapter").foregroundColor(ColorValue.Gray).font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Undo", task6Done.tog())
-							]).padding(12)
-						]).opacity(0.5),
-						new Card([
-							new HStack(8, [
-								new Text("  ").background(ColorValue.Orange).cornerRadius(4).padding(4),
-								new Text("Read a chapter").font(FontStyle.BodyLarge),
-								new Spacer(),
-								new Button("Done", task6Done.tog())
-							]).padding(12)
-						])
-					)
+					taskItem("Buy groceries", task4Done, ColorValue.Orange),
+					taskItem("Go for a run", task5Done, ColorValue.Orange),
+					taskItem("Read a chapter", task6Done, ColorValue.Orange)
 				])
 			]).padding()),
 

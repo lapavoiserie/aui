@@ -21,6 +21,8 @@ class ComposeGenerator {
 	static var _nextRouteId:Int = 0;
 	static var _hasNavigation:Bool = false;
 	static var _hasTabView:Bool = false;
+	// Local bindings for inlining view-returning function calls (param ID → arg expr)
+	static var _localBindings:Map<Int, TypedExpr> = new Map();
 
 	public static function register():Void {
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
@@ -383,6 +385,87 @@ class ComposeGenerator {
 	}
 
 	// -------------------------------------------------------------------------
+	// View-returning function inlining
+	// -------------------------------------------------------------------------
+
+	static function returnsView(field:ClassField):Bool {
+		switch (field.type) {
+			case TFun(_, ret):
+				switch (ret) {
+					case TInst(ref, _):
+						var cls = ref.get();
+						if (cls.name == "View" && cls.pack.join(".") == "aui") return true;
+						var sc = cls.superClass;
+						while (sc != null) {
+							var scCls = sc.t.get();
+							if (scCls.name == "View" && scCls.pack.join(".") == "aui") return true;
+							sc = scCls.superClass;
+						}
+					default:
+				}
+			default:
+		}
+		return false;
+	}
+
+	static function tryInlineViewCall(func:TypedExpr, args:Array<TypedExpr>):Null<String> {
+		switch (func.expr) {
+			case TField(_, fa):
+				switch (fa) {
+					case FInstance(_, _, fieldRef):
+						var field = fieldRef.get();
+						// Skip modifier methods and known View/framework methods
+						if (isModifierMethod(field.name)) return null;
+						if (isFrameworkMethod(field.name)) return null;
+						if (returnsView(field)) return inlineViewFunction(field, args);
+
+					case FStatic(_, fieldRef):
+						var field = fieldRef.get();
+						if (isModifierMethod(field.name)) return null;
+						if (returnsView(field)) return inlineViewFunction(field, args);
+
+					case FClosure(_, fieldRef):
+						var field = fieldRef.get();
+						if (isModifierMethod(field.name)) return null;
+						if (returnsView(field)) return inlineViewFunction(field, args);
+
+					default:
+				}
+			default:
+		}
+		return null;
+	}
+
+	static function isFrameworkMethod(name:String):Bool {
+		return ["body", "push", "pop", "get", "set", "toString", "new"].indexOf(name) != -1;
+	}
+
+	static function inlineViewFunction(field:ClassField, args:Array<TypedExpr>):Null<String> {
+		var funcExpr = field.expr();
+		if (funcExpr == null) return null;
+
+		// Save and set up local bindings for parameters
+		var savedBindings = _localBindings.copy();
+
+		switch (funcExpr.expr) {
+			case TFunction(f):
+				for (i in 0...f.args.length) {
+					if (i < args.length) {
+						_localBindings.set(f.args[i].v.id, args[i]);
+					}
+				}
+			default:
+		}
+
+		var result = translateTypedExpr(funcExpr);
+
+		// Restore previous bindings
+		_localBindings = savedBindings;
+
+		return result;
+	}
+
+	// -------------------------------------------------------------------------
 	// AST Translation
 	// -------------------------------------------------------------------------
 
@@ -413,6 +496,10 @@ class ComposeGenerator {
 				// Check for static factory calls: Text.withState(...)
 				var staticResult = tryTranslateStaticCall(func, args);
 				if (staticResult != null) return staticResult;
+
+				// Check for view-returning function calls (instance + static methods)
+				var inlined = tryInlineViewCall(func, args);
+				if (inlined != null) return inlined;
 
 				// Check for modifier chain: someView.modifier(args)
 				switch (func.expr) {
@@ -455,6 +542,13 @@ class ComposeGenerator {
 					case TNull: return "null";
 					default: return "";
 				}
+
+			case TLocal(v):
+				// Resolve local bindings from inlined function parameters
+				if (_localBindings.exists(v.id)) {
+					return translateTypedExpr(_localBindings.get(v.id));
+				}
+				return "";
 
 			case TField(e, fa):
 				return translateTypedExpr(e);
@@ -1281,12 +1375,15 @@ class ComposeGenerator {
 		switch (expr.expr) {
 			case TField(_, fa):
 				var name = getFieldName(fa);
-				// Check if it's a known state field
 				for (sf in _stateFields) {
 					if (sf.name == name) return name;
 				}
 				return null;
 			case TLocal(v):
+				// Check local bindings first (from inlined function params)
+				if (_localBindings.exists(v.id)) {
+					return extractStateFieldName(_localBindings.get(v.id));
+				}
 				for (sf in _stateFields) {
 					if (sf.name == v.name) return v.name;
 				}
