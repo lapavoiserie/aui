@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AUI — Native Android apps in Haxe</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Build native Android apps in Haxe using Jetpack Compose">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --theme-color: #6750A4;
+      --theme-color-light: #D0BCFF;
+    }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .cover { background: linear-gradient(135deg, #1C1B1F 0%, #381E72 50%, #6750A4 100%) !important; }
+    .cover h1 { font-weight: 700; }
+    .cover p:last-child a { background-color: var(--theme-color) !important; }
+    .sidebar-nav li a { font-size: 14px; }
+    .markdown-section h1 { font-weight: 700; }
+    .markdown-section code { font-size: 13px; }
+    .markdown-section table { font-size: 14px; }
+    .markdown-section blockquote { border-left-color: var(--theme-color); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: 'aui',
+      repo: 'https://github.com/AUI-Framework/aui',
+      coverpage: true,
+      loadSidebar: true,
+      subMaxLevel: 3,
+      search: {
+        placeholder: 'Search docs...',
+        noData: 'No results.',
+        paths: 'auto'
+      },
+      auto2top: true,
+      routerMode: 'hash'
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-haxe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-kotlin.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-mermaid@2/dist/docsify-mermaid.js"></script>
+</body>
+</html>
