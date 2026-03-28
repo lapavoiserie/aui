@@ -15,6 +15,7 @@
 - **State**
   - [Overview](state/README.md)
   - [State & Actions](state/state-and-actions.md)
+  - [Binding](state/binding.md)
 
 - **Core**
   - [Modifiers](modifiers.md)

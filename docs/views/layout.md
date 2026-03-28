@@ -89,3 +89,29 @@ new ScrollView([
 ```
 
 Generates a `Column` with `Modifier.verticalScroll(rememberScrollState())`.
+
+## SafeArea
+
+Wraps content to respect system safe areas (status bar, navigation bar, display cutouts). Maps to a `Column` with `Modifier.safeDrawingPadding()`.
+
+```haxe
+new SafeArea([
+    new Text("Title"),
+    new VStack([
+        new Text("Content is inset from system bars"),
+    ]),
+])
+```
+
+Generated Kotlin:
+
+```kotlin
+Column(modifier = Modifier.safeDrawingPadding()) {
+    Text("Title")
+    Column {
+        Text("Content is inset from system bars")
+    }
+}
+```
+
+Use SafeArea as the outermost wrapper in your `body()` to keep content clear of notches, camera cutouts, and system navigation.

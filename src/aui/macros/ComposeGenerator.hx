@@ -771,6 +771,11 @@ class ComposeGenerator {
 				viewCode = generateProgressView(args, modStr, indent);
 			case "aui.ui.Card":
 				viewCode = generateCard(args, modStr, indent);
+			case "aui.ui.SafeArea" | "mui.ui.SafeArea":
+				var safeMod = modStr.length > 0
+					? 'Modifier.safeDrawingPadding().then($modStr)'
+					: "Modifier.safeDrawingPadding()";
+				viewCode = generateContainer("Column", args, safeMod, indent);
 			default:
 				viewCode = indent + "// Unknown view: " + fullName + "\n";
 		}
