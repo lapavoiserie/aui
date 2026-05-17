@@ -23,6 +23,11 @@ class ComposeGenerator {
 	static var _hasTabView:Bool = false;
 	// Local bindings for inlining view-returning function calls (param ID → arg expr)
 	static var _localBindings:Map<Int, TypedExpr> = new Map();
+	// Lambda parameters currently in Kotlin scope (param ID → Kotlin identifier).
+	// Populated when entering closure-form ForEach bodies so TLocal refs to
+	// the lambda parameter resolve to their declared name instead of falling
+	// through to the empty fallback.
+	static var _lambdaParamIds:Map<Int, String> = new Map();
 
 	public static function register():Void {
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
@@ -544,6 +549,13 @@ class ComposeGenerator {
 				}
 
 			case TLocal(v):
+				// A lambda parameter bound by an enclosing ForEach (or any
+				// future closure-form view) is already in Kotlin scope — emit
+				// the identifier directly so `new Text(item)` becomes
+				// `Text(text = "$item", …)` rather than `Text(text = "")`.
+				if (_lambdaParamIds.exists(v.id)) {
+					return _lambdaParamIds.get(v.id);
+				}
 				// Resolve local bindings from inlined function parameters
 				if (_localBindings.exists(v.id)) {
 					return translateTypedExpr(_localBindings.get(v.id));
@@ -1176,12 +1188,14 @@ class ComposeGenerator {
 
 		// Second arg: the builder function
 		var paramName = "item";
+		var paramId:Int = -1;
 		var builderBody:Null<TypedExpr> = null;
 
 		switch (args[1].expr) {
 			case TFunction(tf):
 				if (tf.args.length > 0) {
 					paramName = tf.args[0].v.name;
+					paramId = tf.args[0].v.id;
 				}
 				builderBody = tf.expr;
 			default:
@@ -1189,9 +1203,16 @@ class ComposeGenerator {
 
 		buf.add(indent + collectionExpr + ".forEachIndexed { index, " + paramName + " ->\n");
 		if (builderBody != null) {
+			// Register the lambda parameter so TLocal references inside
+			// the body resolve to the Kotlin identifier `paramName` rather
+			// than the empty-string fallback. Save & restore for nested
+			// ForEach calls.
+			var savedLambdaParams = _lambdaParamIds.copy();
+			if (paramId >= 0) _lambdaParamIds.set(paramId, paramName);
 			_indent++;
 			buf.add(translateTypedExpr(builderBody));
 			_indent--;
+			_lambdaParamIds = savedLambdaParams;
 		}
 		buf.add(indent + "}\n");
 		return buf.toString();
