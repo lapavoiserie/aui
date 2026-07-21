@@ -27,9 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.*
 
 @Composable
-fun MainScreen() {
-    var count by remember { mutableStateOf(0) }
-
+fun MainScreen(app: haxe.root.Counter) {
     Column(
         modifier = Modifier.padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -42,7 +40,7 @@ fun MainScreen() {
         )
         Spacer(modifier = Modifier.weight(1f))
         Text(
-            text = "$count",
+            text = "${app.count.get()}",
             style = MaterialTheme.typography.displayLarge
         )
         Spacer(modifier = Modifier.weight(1f))
@@ -51,12 +49,12 @@ fun MainScreen() {
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Button(
-                onClick = { count-- }
+                onClick = { app.count.set((app.count.get() as Int) - 1) }
             ) {
                 Text("-")
             }
             Button(
-                onClick = { count++ }
+                onClick = { app.count.set((app.count.get() as Int) + 1) }
             ) {
                 Text("+")
             }

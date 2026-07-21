@@ -27,18 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.*
 
 @Composable
-fun MainScreen() {
-    var task1Done by remember { mutableStateOf(false) }
-    var task2Done by remember { mutableStateOf(false) }
-    var task3Done by remember { mutableStateOf(false) }
-    var task4Done by remember { mutableStateOf(false) }
-    var task5Done by remember { mutableStateOf(false) }
-    var task6Done by remember { mutableStateOf(false) }
-    var noteText by remember { mutableStateOf("") }
-    var notifications by remember { mutableStateOf(true) }
-    var showConfirm by remember { mutableStateOf(false) }
-    var compactMode by remember { mutableStateOf(false) }
-
+fun MainScreen(app: haxe.root.TodoApp) {
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
@@ -98,7 +87,7 @@ fun MainScreen() {
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
-                                    if (task1Done) {
+                                    if ((app.task1Done.get() as Boolean)) {
                                         Card(
                                             modifier = Modifier.alpha(0.5f).fillMaxWidth()
                                         ) {
@@ -118,7 +107,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task1Done = !task1Done }
+                                                    onClick = { app.task1Done.set(!(app.task1Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Undo")
                                                 }
@@ -143,14 +132,14 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task1Done = !task1Done }
+                                                    onClick = { app.task1Done.set(!(app.task1Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Done")
                                                 }
                                             }
                                         }
                                     }
-                                    if (task2Done) {
+                                    if ((app.task2Done.get() as Boolean)) {
                                         Card(
                                             modifier = Modifier.alpha(0.5f).fillMaxWidth()
                                         ) {
@@ -170,7 +159,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task2Done = !task2Done }
+                                                    onClick = { app.task2Done.set(!(app.task2Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Undo")
                                                 }
@@ -195,14 +184,14 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task2Done = !task2Done }
+                                                    onClick = { app.task2Done.set(!(app.task2Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Done")
                                                 }
                                             }
                                         }
                                     }
-                                    if (task3Done) {
+                                    if ((app.task3Done.get() as Boolean)) {
                                         Card(
                                             modifier = Modifier.alpha(0.5f).fillMaxWidth()
                                         ) {
@@ -222,7 +211,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task3Done = !task3Done }
+                                                    onClick = { app.task3Done.set(!(app.task3Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Undo")
                                                 }
@@ -247,7 +236,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task3Done = !task3Done }
+                                                    onClick = { app.task3Done.set(!(app.task3Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Done")
                                                 }
@@ -261,7 +250,7 @@ fun MainScreen() {
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
-                                    if (task4Done) {
+                                    if ((app.task4Done.get() as Boolean)) {
                                         Card(
                                             modifier = Modifier.alpha(0.5f).fillMaxWidth()
                                         ) {
@@ -281,7 +270,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task4Done = !task4Done }
+                                                    onClick = { app.task4Done.set(!(app.task4Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Undo")
                                                 }
@@ -306,14 +295,14 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task4Done = !task4Done }
+                                                    onClick = { app.task4Done.set(!(app.task4Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Done")
                                                 }
                                             }
                                         }
                                     }
-                                    if (task5Done) {
+                                    if ((app.task5Done.get() as Boolean)) {
                                         Card(
                                             modifier = Modifier.alpha(0.5f).fillMaxWidth()
                                         ) {
@@ -333,7 +322,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task5Done = !task5Done }
+                                                    onClick = { app.task5Done.set(!(app.task5Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Undo")
                                                 }
@@ -358,14 +347,14 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task5Done = !task5Done }
+                                                    onClick = { app.task5Done.set(!(app.task5Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Done")
                                                 }
                                             }
                                         }
                                     }
-                                    if (task6Done) {
+                                    if ((app.task6Done.get() as Boolean)) {
                                         Card(
                                             modifier = Modifier.alpha(0.5f).fillMaxWidth()
                                         ) {
@@ -385,7 +374,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task6Done = !task6Done }
+                                                    onClick = { app.task6Done.set(!(app.task6Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Undo")
                                                 }
@@ -410,7 +399,7 @@ fun MainScreen() {
                                                 )
                                                 Spacer(modifier = Modifier.weight(1f))
                                                 Button(
-                                                    onClick = { task6Done = !task6Done }
+                                                    onClick = { app.task6Done.set(!(app.task6Done.get() as Boolean)) }
                                                 ) {
                                                     Text("Done")
                                                 }
@@ -440,8 +429,8 @@ fun MainScreen() {
                                     HorizontalDivider()
                                     Spacer(modifier = Modifier.weight(1f))
                                     OutlinedTextField(
-                                        value = noteText,
-                                        onValueChange = { noteText = it },
+                                        value = (app.noteText.get() as String),
+                                        onValueChange = { app.noteText.set(it) },
                                         label = { Text("Write something...") },
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -450,14 +439,14 @@ fun MainScreen() {
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text = "$noteText",
+                                            text = "${app.noteText.get()}",
                                             style = MaterialTheme.typography.bodyLarge,
                                             modifier = Modifier.padding(16.dp).fillMaxWidth()
                                         )
                                     }
                                     Spacer(modifier = Modifier.weight(1f))
                                     Button(
-                                        onClick = { noteText = "" }
+                                        onClick = { app.noteText.set("") }
                                     ) {
                                         Text("Clear")
                                     }
@@ -487,14 +476,14 @@ fun MainScreen() {
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(text = "Enable notifications", modifier = Modifier.weight(1f))
-                                        Switch(checked = notifications, onCheckedChange = { notifications = it })
+                                        Switch(checked = (app.notifications.get() as Boolean), onCheckedChange = { app.notifications.set(it) })
                                     }
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(text = "Compact mode", modifier = Modifier.weight(1f))
-                                        Switch(checked = compactMode, onCheckedChange = { compactMode = it })
+                                        Switch(checked = (app.compactMode.get() as Boolean), onCheckedChange = { app.compactMode.set(it) })
                                     }
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                                     Text(
@@ -503,16 +492,16 @@ fun MainScreen() {
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
-                                    if (showConfirm) {
+                                    if ((app.showConfirm.get() as Boolean)) {
                                         AlertDialog(
-                                            onDismissRequest = { showConfirm = false },
+                                            onDismissRequest = { app.showConfirm.set(false) },
                                             title = { Text("Reset Tasks") },
                                             text = { Text("This will mark all tasks as not done.") },
-                                            confirmButton = { TextButton(onClick = { showConfirm = false }) { Text("OK") } }
+                                            confirmButton = { TextButton(onClick = { app.showConfirm.set(false) }) { Text("OK") } }
                                         )
                                     }
                                     Button(
-                                        onClick = { showConfirm = !showConfirm },
+                                        onClick = { app.showConfirm.set(!(app.showConfirm.get() as Boolean)) },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text("Reset all tasks")

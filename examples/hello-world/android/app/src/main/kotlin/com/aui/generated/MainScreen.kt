@@ -27,7 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.*
 
 @Composable
-fun MainScreen() {
+fun MainScreen(app: haxe.root.HelloWorld) {
     Column(
         modifier = Modifier.padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally

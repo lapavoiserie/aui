@@ -1,6 +1,6 @@
 # State Management
 
-AUI provides reactive state that automatically updates your UI when values change. State is declared on your App class and compiled to Compose's `mutableStateOf`.
+AUI provides reactive state that automatically updates your UI when values change. State is declared on your App class and backed at runtime by a Compose `MutableState` (through the `aui.state.StateBridge` runtime), so writes from anywhere — Compose handlers or pure Haxe logic — trigger recomposition.
 
 ## Quick reference
 
@@ -28,9 +28,9 @@ class MyApp extends App {
 
 ## How it works
 
-1. `@:state var count:Int = 0` is transformed by `StateMacro` into a `State<Int>` field
-2. The `ComposeGenerator` macro detects `State<T>` fields and emits `var count by remember { mutableStateOf(0) }` in Kotlin
-3. State mutations (`count.inc()`) generate direct Kotlin mutations (`count++`)
-4. Compose's snapshot system automatically recomposes the UI when state changes
+1. `@:state var count:Int = 0` is transformed by `StateMacro` into a `State<Int>` field on the App instance
+2. `State<T>` wraps a Compose `MutableState` created via `aui.state.StateBridge` (a Kotlin runtime object AUI copies into the generated project); the Haxe side only holds an opaque reference
+3. The `ComposeGenerator` macro reads state as `app.count.get()` and writes it as `app.count.set(...)` — e.g. `count.inc()` becomes `app.count.set((app.count.get() as Int) + 1)`
+4. Reads inside a `@Composable` are tracked by Compose's snapshot system, so any write — from a Compose handler or from pure Haxe logic — recomposes the UI
 
 See [State & Actions](state/state-and-actions.md) for full details.

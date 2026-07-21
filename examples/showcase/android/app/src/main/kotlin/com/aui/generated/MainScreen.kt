@@ -27,13 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.*
 
 @Composable
-fun MainScreen() {
-    var count by remember { mutableStateOf(0) }
-    var showAlert by remember { mutableStateOf(false) }
-    var darkMode by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
-    var sliderVal by remember { mutableStateOf(0.5f) }
-
+fun MainScreen(app: haxe.root.Showcase) {
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
@@ -79,20 +73,20 @@ fun MainScreen() {
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
                                     OutlinedTextField(
-                                        value = name,
-                                        onValueChange = { name = it },
+                                        value = (app.name.get() as String),
+                                        onValueChange = { app.name.set(it) },
                                         label = { Text("Enter your name") },
                                         modifier = Modifier.fillMaxWidth()
                                     )
-                                    if (darkMode) {
+                                    if ((app.darkMode.get() as Boolean)) {
                                         Text(
-                                            text = "Hello, $name!",
+                                            text = "Hello, ${app.name.get()}!",
                                             color = Color.Blue,
                                             style = MaterialTheme.typography.titleLarge
                                         )
                                     } else {
                                         Text(
-                                            text = "Hello, $name!",
+                                            text = "Hello, ${app.name.get()}!",
                                             style = MaterialTheme.typography.titleLarge
                                         )
                                     }
@@ -104,7 +98,7 @@ fun MainScreen() {
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
                                     Text(
-                                        text = "Count: $count",
+                                        text = "Count: ${app.count.get()}",
                                         style = MaterialTheme.typography.titleLarge
                                     )
                                     Row(
@@ -112,17 +106,17 @@ fun MainScreen() {
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         Button(
-                                            onClick = { count-- }
+                                            onClick = { app.count.set((app.count.get() as Int) - 1) }
                                         ) {
                                             Text("-")
                                         }
                                         Button(
-                                            onClick = { count = 0 }
+                                            onClick = { app.count.set(0) }
                                         ) {
                                             Text("Reset")
                                         }
                                         Button(
-                                            onClick = { count++ }
+                                            onClick = { app.count.set((app.count.get() as Int) + 1) }
                                         ) {
                                             Text("+")
                                         }
@@ -139,7 +133,7 @@ fun MainScreen() {
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(text = "Dark Mode", modifier = Modifier.weight(1f))
-                                        Switch(checked = darkMode, onCheckedChange = { darkMode = it })
+                                        Switch(checked = (app.darkMode.get() as Boolean), onCheckedChange = { app.darkMode.set(it) })
                                     }
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                                     Text(
@@ -148,16 +142,16 @@ fun MainScreen() {
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
-                                    if (showAlert) {
+                                    if ((app.showAlert.get() as Boolean)) {
                                         AlertDialog(
-                                            onDismissRequest = { showAlert = false },
+                                            onDismissRequest = { app.showAlert.set(false) },
                                             title = { Text("Hello!") },
                                             text = { Text("This alert was triggered from Haxe") },
-                                            confirmButton = { TextButton(onClick = { showAlert = false }) { Text("OK") } }
+                                            confirmButton = { TextButton(onClick = { app.showAlert.set(false) }) { Text("OK") } }
                                         )
                                     }
                                     Button(
-                                        onClick = { showAlert = !showAlert }
+                                        onClick = { app.showAlert.set(!(app.showAlert.get() as Boolean)) }
                                     ) {
                                         Text("Show Alert")
                                     }

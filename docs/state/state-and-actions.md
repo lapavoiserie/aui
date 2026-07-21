@@ -22,7 +22,13 @@ class MyApp extends App {
 | `Bool` | `Boolean` | `false` |
 | `String` | `String` | `""` |
 
-Default values are extracted from the `@:state` declaration. For example, `@:state var count:Int = 42` generates `mutableStateOf(42)`.
+Default values are extracted from the `@:state` declaration.
+
+### How state is backed
+
+Each `@:state` field becomes a `State<T>` on your **App instance**, backed at runtime by a Compose `MutableState` created through the `aui.state.StateBridge` runtime. Reads go through `app.count.get()` and writes through `app.count.set(...)`.
+
+Because the cell lives on the app (not a Kotlin `remember` local), a write from **anywhere** — including pure Haxe logic invoked outside a `@Composable` — triggers recomposition. Reads inside a `@Composable` are tracked by Compose's snapshot system automatically. Haxe code never imports Compose types; it only sees the opaque `State<T>`.
 
 ## State actions
 
@@ -30,12 +36,12 @@ State actions are declarative mutations used in Button onClick handlers. They're
 
 | Action | Usage | Generated Kotlin |
 |--------|-------|-----------------|
-| `inc()` | `count.inc()` | `count++` |
-| `inc(n)` | `count.inc(5)` | `count += 5` |
-| `dec()` | `count.dec()` | `count--` |
-| `dec(n)` | `count.dec(5)` | `count -= 5` |
-| `setTo(val)` | `count.setTo(0)` | `count = 0` |
-| `tog()` | `flag.tog()` | `flag = !flag` |
+| `inc()` | `count.inc()` | `app.count.set((app.count.get() as Int) + 1)` |
+| `inc(n)` | `count.inc(5)` | `app.count.set((app.count.get() as Int) + 5)` |
+| `dec()` | `count.dec()` | `app.count.set((app.count.get() as Int) - 1)` |
+| `dec(n)` | `count.dec(5)` | `app.count.set((app.count.get() as Int) - 5)` |
+| `setTo(val)` | `count.setTo(0)` | `app.count.set(0)` |
+| `tog()` | `flag.tog()` | `app.flag.set(!(app.flag.get() as Boolean))` |
 
 ### Usage in Button
 
@@ -55,12 +61,12 @@ Text.withState("Hello, {name}!")
 Text.withState("{count} items remaining")
 ```
 
-Generated Kotlin uses `$` string interpolation:
+Generated Kotlin uses `$` string interpolation over the app-backed state:
 
 ```kotlin
-Text(text = "Count: $count")
-Text(text = "Hello, $name!")
-Text(text = "$count items remaining")
+Text(text = "Count: ${app.count.get()}")
+Text(text = "Hello, ${app.name.get()}!")
+Text(text = "${app.count.get()} items remaining")
 ```
 
 The text automatically updates when any referenced state variable changes.

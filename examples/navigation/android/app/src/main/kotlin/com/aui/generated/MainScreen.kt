@@ -27,9 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.*
 
 @Composable
-fun MainScreen() {
-    var count by remember { mutableStateOf(0) }
-
+fun MainScreen(app: haxe.root.NavDemo) {
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
@@ -75,7 +73,7 @@ fun MainScreen() {
                                         modifier = Modifier.padding(vertical = 8.dp)
                                     )
                                     Text(
-                                        text = "Count: $count",
+                                        text = "Count: ${app.count.get()}",
                                         style = MaterialTheme.typography.titleLarge
                                     )
                                     Row(
@@ -83,12 +81,12 @@ fun MainScreen() {
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         Button(
-                                            onClick = { count-- }
+                                            onClick = { app.count.set((app.count.get() as Int) - 1) }
                                         ) {
                                             Text("-")
                                         }
                                         Button(
-                                            onClick = { count++ }
+                                            onClick = { app.count.set((app.count.get() as Int) + 1) }
                                         ) {
                                             Text("+")
                                         }
