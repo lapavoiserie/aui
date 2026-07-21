@@ -75,6 +75,7 @@ class ComposeGenerator {
 		var targetSdk = 35;
 		var compileSdk = 35;
 
+		var androidConfig:Null<AndroidPackagingConfig> = null;
 		if (FileSystem.exists("aui.json")) {
 			try {
 				var json = haxe.Json.parse(File.getContent("aui.json"));
@@ -83,26 +84,41 @@ class ComposeGenerator {
 				if (json.minSdk != null) minSdk = json.minSdk;
 				if (json.targetSdk != null) targetSdk = json.targetSdk;
 				if (json.compileSdk != null) compileSdk = json.compileSdk;
+				if (json.android != null) androidConfig = json.android;
 			} catch (e:Dynamic) {}
 		}
 
 		// Collect state fields from the App subclass
 		_stateFields = collectStateFields(appType);
 
-		// Generate Gradle project if needed
-		if (!FileSystem.exists("android/build.gradle.kts")) {
-			GradleProject.generate({
-				appName: appName,
-				packageName: packageName,
-				minSdk: minSdk,
-				targetSdk: targetSdk,
-				compileSdk: compileSdk
-			});
+		// Always (re)generate the Gradle project files: inexpensive idempotent overwrites
+		// of build.gradle.kts / manifest / themes. Lets aui.json#android changes propagate
+		// without forcing the user to delete android/. The wrapper jar (created by gradle wrapper)
+		// is left untouched.
+		var firstGenerate = !FileSystem.exists("android/build.gradle.kts");
+		GradleProject.generate({
+			appName: appName,
+			packageName: packageName,
+			minSdk: minSdk,
+			targetSdk: targetSdk,
+			compileSdk: compileSdk,
+			android: androidConfig
+		});
+		if (firstGenerate) {
 			Context.warning('[AUI] Generated Android project in android/', Context.currentPos());
 		}
 
 		generateMainActivity(packageName, appName);
 		generateMainScreen(packageName, appType);
+
+		// Emit Kotlin runtime helpers (StateBridge, etc.) alongside the user's
+		// generated Compose files. These are consumed by the Haxe state classes
+		// at runtime — the JVM class loader pairs them up regardless of source
+		// origin, both end up in the same APK.
+		writeAuiRuntimeKotlin();
+
+		// Sync native libs and assets declared in aui.json#android on every build.
+		if (androidConfig != null) syncNativeBundle(androidConfig);
 
 		Context.warning('[AUI] Generated Compose files in ${_outputDir}', Context.currentPos());
 	}
@@ -231,10 +247,60 @@ class ComposeGenerator {
 	}
 
 	// -------------------------------------------------------------------------
+	// JVM class name resolution
+	// -------------------------------------------------------------------------
+
+	// hxjava maps default-package classes to `haxe.root.<Name>`. Packaged
+	// classes pass through unchanged. This is the convention emitted by Haxe's
+	// `--jvm` target as of 4.3.x; if it changes, this single helper is the
+	// only thing to update.
+	static function jvmClassName(haxeName:String):String {
+		return (haxeName.indexOf(".") < 0) ? "haxe.root." + haxeName : haxeName;
+	}
+
+	// Returns the Haxe-side App class name (cached during onAfterTyping).
+	static function appJvmName():String {
+		return jvmClassName(_appClass);
+	}
+
+	// -------------------------------------------------------------------------
+	// State read / write emitters
+	//
+	// State is owned by the Haxe App instance and backed by Compose
+	// MutableState through aui.state.StateBridge. Reads inside @Composable
+	// are tracked; writes from anywhere (including lifted closures running
+	// as JVM bytecode) trigger recomposition.
+	// -------------------------------------------------------------------------
+
+	static function stateKotlinType(name:String):String {
+		for (sf in _stateFields) {
+			if (sf.name == name) return sf.type;
+		}
+		return "Any?";
+	}
+
+	// Read with Kotlin-side cast to the declared type. Used when the value is
+	// fed to a typed Compose API (OutlinedTextField, Slider, etc.).
+	static function stateRead(name:String):String {
+		return "(app." + name + ".get() as " + stateKotlinType(name) + ")";
+	}
+
+	// Read for use inside Kotlin string interpolation `${...}` — toString happens
+	// anyway, no cast needed.
+	static function stateReadForInterp(name:String):String {
+		return "app." + name + ".get()";
+	}
+
+	static function stateAssign(name:String, valueExpr:String):String {
+		return "app." + name + ".set(" + valueExpr + ")";
+	}
+
+	// -------------------------------------------------------------------------
 	// File generators
 	// -------------------------------------------------------------------------
 
 	static function generateMainActivity(packageName:String, appName:String):Void {
+		var jvmApp = appJvmName();
 		var lines = [
 			"package " + packageName,
 			"",
@@ -247,10 +313,23 @@ class ComposeGenerator {
 			"class MainActivity : ComponentActivity() {",
 			"    override fun onCreate(savedInstanceState: Bundle?) {",
 			"        super.onCreate(savedInstanceState)",
+			"        // Construct the Haxe App instance: this initializes its @:state",
+			"        // fields, each backed by a Compose MutableState via",
+			"        // aui.state.StateBridge — reactive throughout the lifetime of",
+			"        // the Activity.",
+			"        val app = " + jvmApp + "()",
+			"        // AUI lifecycle hook: invoked once before composition, gives the",
+			"        // app a chance to bootstrap with the Android Context (extract",
+			"        // assets, set up symlinks, register JNI bridges, etc.).",
+			"        app.onAndroidContextReady(",
+			"            applicationInfo.nativeLibraryDir,",
+			"            filesDir.absolutePath,",
+			"            assets",
+			"        )",
 			"        setContent {",
 			"            MaterialTheme {",
 			"                Surface {",
-			"                    MainScreen()",
+			"                    MainScreen(app)",
 			"                }",
 			"            }",
 			"        }",
@@ -326,12 +405,14 @@ class ComposeGenerator {
 		buf.add("\n");
 
 		buf.add("@Composable\n");
-		buf.add("fun MainScreen() {\n");
+		buf.add("fun MainScreen(app: " + appJvmName() + ") {\n");
 
-		for (sf in _stateFields) {
-			buf.add("    var " + sf.name + " by remember { mutableStateOf(" + sf.defaultValue + ") }\n");
-		}
-		if (_stateFields.length > 0) buf.add("\n");
+		// State fields are no longer declared as `var X by remember { mutableStateOf(...) }`.
+		// They live on the Haxe App instance (`app.X`), each backed by a Compose
+		// MutableState (created in the Haxe State<T> constructor through StateBridge).
+		// Reads via `app.X.get()` are observed by Compose; writes via `app.X.set(...)`
+		// trigger recomposition — including writes from lifted closures running as
+		// pure JVM bytecode.
 
 		if (_hasNavigation) {
 			buf.add("    val navController = rememberNavController()\n\n");
@@ -482,7 +563,7 @@ class ComposeGenerator {
 
 			case TNew(classRef, _, args):
 				var cls = classRef.get();
-				var fullName = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
+				var fullName = resolveAuiClassName(cls);
 				return translateViewWithModifiers(fullName, args, []);
 
 			case TBlock(exprs):
@@ -522,7 +603,7 @@ class ComposeGenerator {
 							switch (baseExpr.expr) {
 								case TNew(classRef, _, ctorArgs):
 									var cls = classRef.get();
-									var fullName = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
+									var fullName = resolveAuiClassName(cls);
 									return translateViewWithModifiers(fullName, ctorArgs, modifiers);
 								default:
 									return translateTypedExpr(baseExpr);
@@ -596,10 +677,17 @@ class ComposeGenerator {
 				template = translateTypedExpr(templateExpr);
 		}
 
-		// Convert {varName} → $varName for Kotlin string interpolation
+		// Convert {varName} → ${app.varName.get()} for Kotlin string interpolation,
+		// reading from the Haxe-managed Compose-observable state.
 		var reg = ~/\{([^}]+)\}/g;
 		var kotlinStr = reg.map(template, function(r) {
-			return "$" + r.matched(1);
+			var ref = r.matched(1);
+			// If `ref` matches a known state field, route through app; otherwise
+			// keep the legacy `$ref` syntax (e.g. for plain captured locals).
+			for (sf in _stateFields) {
+				if (sf.name == ref) return "${" + stateReadForInterp(ref) + "}";
+			}
+			return "$" + ref;
 		});
 
 		var hasBold = false;
@@ -684,6 +772,21 @@ class ComposeGenerator {
 	// View translation
 	// -------------------------------------------------------------------------
 
+	// Resolve a class to its canonical aui.* name by walking up the superclass chain.
+	// Allows wrappers like mui.ui.VStack (extends aui.ui.VStack) to be matched as aui.ui.VStack.
+	static function resolveAuiClassName(cls:ClassType):String {
+		var fullName = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
+		if (StringTools.startsWith(fullName, "aui.")) return fullName;
+		var sc = cls.superClass;
+		while (sc != null) {
+			var scCls = sc.t.get();
+			var scName = scCls.pack.join(".") + (scCls.pack.length > 0 ? "." : "") + scCls.name;
+			if (StringTools.startsWith(scName, "aui.")) return scName;
+			sc = scCls.superClass;
+		}
+		return fullName;
+	}
+
 	static function translateViewWithModifiers(fullName:String, args:Array<TypedExpr>,
 			modifiers:Array<{name:String, args:Array<TypedExpr>}>):String {
 		var indent = getIndent();
@@ -696,8 +799,8 @@ class ComposeGenerator {
 			if (mod.name == "sheet" && mod.args.length >= 2) {
 				var stateName = extractStateFieldName(mod.args[0]);
 				if (stateName != null) {
-					prefix += indent + "if (" + stateName + ") {\n";
-					prefix += indent + "    ModalBottomSheet(onDismissRequest = { " + stateName + " = false }) {\n";
+					prefix += indent + "if (" + stateRead(stateName) + ") {\n";
+					prefix += indent + "    ModalBottomSheet(onDismissRequest = { " + stateAssign(stateName, "false") + " }) {\n";
 					_indent += 2;
 					prefix += translateTypedExpr(mod.args[1]);
 					_indent -= 2;
@@ -710,15 +813,15 @@ class ComposeGenerator {
 				var stateName = extractStateFieldName(mod.args[1]);
 				var message = mod.args.length >= 3 ? translateTypedExpr(mod.args[2]) : "null";
 				if (stateName != null) {
-					prefix += indent + "if (" + stateName + ") {\n";
+					prefix += indent + "if (" + stateRead(stateName) + ") {\n";
 					prefix += indent + "    AlertDialog(\n";
-					prefix += indent + "        onDismissRequest = { " + stateName + " = false },\n";
+					prefix += indent + "        onDismissRequest = { " + stateAssign(stateName, "false") + " },\n";
 					prefix += indent + "        title = { Text(" + title + ") },\n";
 					if (message != "null") {
 						prefix += indent + "        text = { Text(" + message + ") },\n";
 					}
-					prefix += indent + '        confirmButton = { TextButton(onClick = { ' + stateName
-						+ ' = false }) { Text("OK") } }\n';
+					prefix += indent + '        confirmButton = { TextButton(onClick = { ' + stateAssign(stateName, "false")
+						+ ' }) { Text("OK") } }\n';
 					prefix += indent + "    )\n";
 					prefix += indent + "}\n";
 				}
@@ -877,12 +980,18 @@ class ComposeGenerator {
 		var label = '""';
 		if (args.length > 0) label = translateTypedExpr(args[0]);
 
-		// Try to translate the second argument as a StateAction
+		// Action resolution order:
+		// 1. StateAction enum (count.inc(), count.dec(), etc.) — direct AST translation
+		// 2. Lifted-closure method reference (this.__aui_action_N) — call `app.<m>()`
+		// Falls back to a no-op `{ }` only if both fail.
 		var actionCode = "{ }";
 		if (args.length >= 2) {
 			var sa = translateStateAction(args[1]);
 			if (sa != null) {
 				actionCode = "{ " + sa + " }";
+			} else {
+				var mref = translateMethodRef(args[1]);
+				if (mref != null) actionCode = "{ " + mref + " }";
 			}
 		}
 
@@ -893,6 +1002,40 @@ class ComposeGenerator {
 		buf.add(indent + "    Text(" + label + ")\n");
 		buf.add(indent + "}\n");
 		return buf.toString();
+	}
+
+	// Recognise a method reference of the form `this.<name>` (typed as TField on
+	// `this` or unwrapped through the inlined-binding layer). Used to detect
+	// the lifted closures produced by aui.macros.StateMacro for button actions.
+	// Returns the Kotlin call site `app.<name>()` or null if the expr isn't a
+	// method reference.
+	static function translateMethodRef(expr:TypedExpr):Null<String> {
+		if (expr == null) return null;
+		switch (expr.expr) {
+			case TField(_, fa):
+				switch (fa) {
+					case FInstance(_, _, ref):
+						var f = ref.get();
+						switch (f.type) {
+							case TFun(_, _):
+								return "app." + f.name + "()";
+							default:
+						}
+					case FClosure(_, ref):
+						var f = ref.get();
+						switch (f.type) {
+							case TFun(_, _):
+								return "app." + f.name + "()";
+							default:
+						}
+					default:
+				}
+			case TParenthesis(e): return translateMethodRef(e);
+			case TMeta(_, e): return translateMethodRef(e);
+			case TCast(e, _): return translateMethodRef(e);
+			default:
+		}
+		return null;
 	}
 
 	static function generateTextField(args:Array<TypedExpr>, modStr:String, indent:String):String {
@@ -907,8 +1050,8 @@ class ComposeGenerator {
 
 		if (stateName != null) {
 			buf.add(indent + "OutlinedTextField(\n");
-			buf.add(indent + "    value = " + stateName + ",\n");
-			buf.add(indent + "    onValueChange = { " + stateName + " = it },\n");
+			buf.add(indent + "    value = " + stateRead(stateName) + ",\n");
+			buf.add(indent + "    onValueChange = { " + stateAssign(stateName, "it") + " },\n");
 			buf.add(indent + "    label = { Text(" + placeholder + ") }");
 			if (modStr.length > 0) buf.add(",\n" + indent + "    modifier = " + modStr);
 			else buf.add(",\n" + indent + "    modifier = Modifier.fillMaxWidth()");
@@ -941,7 +1084,7 @@ class ComposeGenerator {
 		buf.add("\n" + indent + ") {\n");
 		buf.add(indent + "    Text(text = " + label + ", modifier = Modifier.weight(1f))\n");
 		if (stateName != null) {
-			buf.add(indent + "    Switch(checked = " + stateName + ", onCheckedChange = { " + stateName + " = it })\n");
+			buf.add(indent + "    Switch(checked = " + stateRead(stateName) + ", onCheckedChange = { " + stateAssign(stateName, "it") + " })\n");
 		} else {
 			buf.add(indent + "    Switch(checked = false, onCheckedChange = { })\n");
 		}
@@ -960,8 +1103,8 @@ class ComposeGenerator {
 		var mod = modStr.length > 0 ? modStr : "Modifier.fillMaxWidth()";
 		if (stateName != null) {
 			buf.add(indent + "Slider(\n");
-			buf.add(indent + "    value = " + stateName + ".toFloat(),\n");
-			buf.add(indent + "    onValueChange = { " + stateName + " = it },\n");
+			buf.add(indent + "    value = " + stateRead(stateName) + ".toFloat(),\n");
+			buf.add(indent + "    onValueChange = { " + stateAssign(stateName, "it") + " },\n");
 			buf.add(indent + "    modifier = " + mod + "\n");
 			buf.add(indent + ")\n");
 		} else {
@@ -1018,7 +1161,7 @@ class ComposeGenerator {
 
 		var stateName:Null<String> = null;
 		if (args.length >= 1) stateName = extractStateFieldName(args[0]);
-		var condVar = stateName != null ? stateName : "false";
+		var condVar = stateName != null ? stateRead(stateName) : "false";
 
 		buf.add(indent + "if (" + condVar + ") {\n");
 		if (args.length >= 2) {
@@ -1172,7 +1315,7 @@ class ComposeGenerator {
 
 		// First arg: the state/collection to iterate
 		var stateName = extractStateFieldName(args[0]);
-		var collectionExpr = stateName != null ? stateName : "emptyList<Any>()";
+		var collectionExpr = stateName != null ? stateRead(stateName) : "emptyList<Any>()";
 
 		// Second arg: the builder function
 		var paramName = "item";
@@ -1269,7 +1412,7 @@ class ComposeGenerator {
 
 		var mod = modStr.length > 0 ? modStr : "Modifier";
 		if (stateName != null) {
-			return indent + "LinearProgressIndicator(\n" + indent + "    progress = { " + stateName + ".toFloat() },\n" + indent
+			return indent + "LinearProgressIndicator(\n" + indent + "    progress = { " + stateRead(stateName) + ".toFloat() },\n" + indent
 				+ "    modifier = " + mod + ".fillMaxWidth()\n" + indent + ")\n";
 		}
 		return indent + "CircularProgressIndicator(" + (modStr.length > 0 ? "modifier = " + modStr : "") + ")\n";
@@ -1337,31 +1480,31 @@ class ComposeGenerator {
 						var stateName = extractStateFieldName(receiver);
 						if (stateName == null) return null;
 
+						// State now lives on the App instance (app.<name>), backed by
+						// a Compose MutableState, so mutations go through the
+						// get/set bridge rather than a Kotlin local. stateRead() is
+						// the typed read, so arithmetic/logical ops apply correctly.
 						switch (methodName) {
 							case "inc":
-								if (args.length > 0) {
-									var amount = translateTypedExpr(args[0]);
-									if (amount != "null" && amount != "") return stateName + " += " + amount;
-								}
-								return stateName + "++";
+								var amount = args.length > 0 ? translateTypedExpr(args[0]) : "";
+								if (amount == "null" || amount == "") amount = "1";
+								return stateAssign(stateName, stateRead(stateName) + " + " + amount);
 							case "dec":
-								if (args.length > 0) {
-									var amount = translateTypedExpr(args[0]);
-									if (amount != "null" && amount != "") return stateName + " -= " + amount;
-								}
-								return stateName + "--";
+								var amount = args.length > 0 ? translateTypedExpr(args[0]) : "";
+								if (amount == "null" || amount == "") amount = "1";
+								return stateAssign(stateName, stateRead(stateName) + " - " + amount);
 							case "setTo":
 								if (args.length > 0) {
 									var value = translateTypedExpr(args[0]);
-									return stateName + " = " + value;
+									return stateAssign(stateName, value);
 								}
 								return null;
 							case "tog":
-								return stateName + " = !" + stateName;
+								return stateAssign(stateName, "!" + stateRead(stateName));
 							case "appendAction":
 								if (args.length > 0) {
 									var value = translateTypedExpr(args[0]);
-									return stateName + " = " + stateName + " + " + value;
+									return stateAssign(stateName, stateRead(stateName) + " + " + value);
 								}
 								return null;
 							default:
@@ -1375,8 +1518,10 @@ class ComposeGenerator {
 	}
 
 	// Extract the name of a State field from a typed expression
-	// Handles: this.fieldName, fieldName (local)
+	// Handles: this.fieldName, fieldName (local), and abstract @:from / unwrap calls
+	// (e.g. TextInputBinding.fromState(state).unwrap() should resolve to "state")
 	static function extractStateFieldName(expr:TypedExpr):Null<String> {
+		if (expr == null) return null;
 		switch (expr.expr) {
 			case TField(_, fa):
 				var name = getFieldName(fa);
@@ -1385,7 +1530,6 @@ class ComposeGenerator {
 				}
 				return null;
 			case TLocal(v):
-				// Check local bindings first (from inlined function params)
 				if (_localBindings.exists(v.id)) {
 					return extractStateFieldName(_localBindings.get(v.id));
 				}
@@ -1393,6 +1537,19 @@ class ComposeGenerator {
 					if (sf.name == v.name) return v.name;
 				}
 				return null;
+			case TCall(_, args):
+				// @:from / unwrap / wrap helpers: dig into the args
+				for (a in args) {
+					var n = extractStateFieldName(a);
+					if (n != null) return n;
+				}
+				return null;
+			case TCast(e, _):
+				return extractStateFieldName(e);
+			case TParenthesis(e):
+				return extractStateFieldName(e);
+			case TMeta(_, e):
+				return extractStateFieldName(e);
 			default:
 				return null;
 		}
@@ -1600,11 +1757,157 @@ class ComposeGenerator {
 	}
 
 	// -------------------------------------------------------------------------
+	// AUI runtime Kotlin helpers
+	// -------------------------------------------------------------------------
+
+	// Emit the small Kotlin runtime that the Haxe state classes call into.
+	// Currently just StateBridge — wraps Compose's mutableStateOf so Haxe's
+	// State<T> can be a Compose-observable cell without depending on Compose
+	// types from the Haxe side.
+	//
+	// The content is sourced from the file at `runtime/StateBridge.kt` in the
+	// aui haxelib (resolved via Context.resolvePath against the State.hx path
+	// that the Haxe compiler is already loading). This keeps a single source
+	// of truth — change StateBridge.kt and the next build picks it up.
+	static function writeAuiRuntimeKotlin():Void {
+		// State bridge (always emitted — every aui app uses State<T>)
+		var stateDir = "android/app/src/main/kotlin/aui/state";
+		ensureDir(stateDir);
+		var stateBridge = locateAuiRuntimeFile("StateBridge.kt");
+		if (stateBridge != null) {
+			copyIfNewer(stateBridge, stateDir + "/StateBridge.kt");
+		} else {
+			Context.warning('[AUI] StateBridge.kt not found in aui/runtime/ — state bridge will be missing', Context.currentPos());
+		}
+
+		// Android IO helpers (assets + symlinks). Always emitted: cheap, and
+		// most non-trivial apps end up needing one or the other.
+		var androidDir = "android/app/src/main/kotlin/aui/android";
+		ensureDir(androidDir);
+		var androidIo = locateAuiRuntimeFile("AndroidIo.kt");
+		if (androidIo != null) {
+			copyIfNewer(androidIo, androidDir + "/AndroidIo.kt");
+		}
+	}
+
+	// Resolve the absolute path of a runtime file shipped by the aui haxelib,
+	// e.g. "StateBridge.kt" → "/path/to/aui/runtime/StateBridge.kt". Uses
+	// Context.resolvePath on a known Haxe source file to anchor the lookup.
+	static function locateAuiRuntimeFile(name:String):Null<String> {
+		try {
+			var anchor = Context.resolvePath("aui/state/State.hx"); // aui/src/aui/state/State.hx
+			// Walk up: src/aui/state/State.hx → src/aui/state → src/aui → src → aui-root
+			var dir = haxe.io.Path.directory(anchor); // .../aui/state
+			dir = haxe.io.Path.directory(dir); // .../aui
+			dir = haxe.io.Path.directory(dir); // .../src
+			dir = haxe.io.Path.directory(dir); // .../<aui-root>
+			var candidate = dir + "/runtime/" + name;
+			if (FileSystem.exists(candidate)) return candidate;
+		} catch (_:Dynamic) {}
+		return null;
+	}
+
+	// -------------------------------------------------------------------------
+	// Native bundle sync (jniLibs + assets, opt-in via aui.json#android)
+	// -------------------------------------------------------------------------
+
+	// Mirror native libraries and asset directories declared in aui.json#android
+	// into android/app/src/main/{jniLibs,assets}. Runs on every haxe compile so
+	// changes to source files propagate without manual copies. Each file is only
+	// rewritten when the destination is missing, has a different size, or the
+	// source mtime is newer — keeps incremental builds fast.
+	static function syncNativeBundle(cfg:AndroidPackagingConfig):Void {
+		var copied = 0;
+		var skipped = 0;
+		var missing:Array<String> = [];
+
+		if (cfg.jniLibs != null) {
+			for (abi in Reflect.fields(cfg.jniLibs)) {
+				var libsForAbi:Dynamic = Reflect.field(cfg.jniLibs, abi);
+				var destDir = "android/app/src/main/jniLibs/" + abi;
+				ensureDir(destDir);
+				for (destName in Reflect.fields(libsForAbi)) {
+					var srcPath:String = Reflect.field(libsForAbi, destName);
+					if (!FileSystem.exists(srcPath)) {
+						missing.push("jniLibs[" + abi + "][" + destName + "] = " + srcPath);
+						continue;
+					}
+					var dstPath = destDir + "/" + destName;
+					if (copyIfNewer(srcPath, dstPath)) copied++; else skipped++;
+				}
+			}
+		}
+
+		if (cfg.assets != null) {
+			for (destSub in Reflect.fields(cfg.assets)) {
+				var srcDir:String = Reflect.field(cfg.assets, destSub);
+				if (!FileSystem.exists(srcDir) || !FileSystem.isDirectory(srcDir)) {
+					missing.push("assets[" + destSub + "] = " + srcDir + " (not a directory)");
+					continue;
+				}
+				var destDir = "android/app/src/main/assets/" + destSub;
+				var stats = mirrorDir(srcDir, destDir);
+				copied += stats.copied;
+				skipped += stats.skipped;
+			}
+		}
+
+		if (missing.length > 0) {
+			Context.warning('[AUI] nativeBundle: missing sources — ' + missing.join("; "), Context.currentPos());
+		}
+		if (copied > 0) {
+			Context.warning('[AUI] nativeBundle: ' + copied + ' file(s) copied, ' + skipped + ' up-to-date', Context.currentPos());
+		}
+	}
+
+	// Returns true if a copy actually happened, false if the destination was already current.
+	static function copyIfNewer(src:String, dst:String):Bool {
+		if (!FileSystem.exists(src)) return false;
+		var srcStat = FileSystem.stat(src);
+		if (FileSystem.exists(dst)) {
+			var dstStat = FileSystem.stat(dst);
+			if (dstStat.size == srcStat.size && dstStat.mtime.getTime() >= srcStat.mtime.getTime()) {
+				return false;
+			}
+		}
+		File.copy(src, dst);
+		return true;
+	}
+
+	// Recursively mirror srcDir → destDir. Returns counters for telemetry.
+	// Does not delete files in destDir that no longer exist in srcDir — the build
+	// step doesn't own destDir exclusively (other tooling might add files), so we
+	// stay conservative and only add/update.
+	static function mirrorDir(srcDir:String, destDir:String):{copied:Int, skipped:Int} {
+		ensureDir(destDir);
+		var copied = 0;
+		var skipped = 0;
+		for (entry in FileSystem.readDirectory(srcDir)) {
+			var srcPath = srcDir + "/" + entry;
+			var dstPath = destDir + "/" + entry;
+			if (FileSystem.isDirectory(srcPath)) {
+				var sub = mirrorDir(srcPath, dstPath);
+				copied += sub.copied;
+				skipped += sub.skipped;
+			} else {
+				if (copyIfNewer(srcPath, dstPath)) copied++; else skipped++;
+			}
+		}
+		return {copied: copied, skipped: skipped};
+	}
+
+	// -------------------------------------------------------------------------
 	// Helpers
 	// -------------------------------------------------------------------------
 
 	static function escapeString(s:String):String {
-		return StringTools.replace(StringTools.replace(s, "\\", "\\\\"), '"', '\\"');
+		var r = StringTools.replace(s, "\\", "\\\\");
+		r = StringTools.replace(r, '"', '\\"');
+		r = StringTools.replace(r, "$", "\\$");
+		r = StringTools.replace(r, "\n", "\\n");
+		r = StringTools.replace(r, "\r", "\\r");
+		r = StringTools.replace(r, "\t", "\\t");
+		return r;
 	}
 
 	static function haxeTypeToKotlin(type:Type):String {
