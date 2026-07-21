@@ -3,6 +3,7 @@ package aui.macros;
 #if macro
 import haxe.macro.Context;
 import haxe.macro.Expr;
+import haxe.macro.ExprTools;
 import haxe.macro.Type;
 
 class StateMacro {
@@ -10,6 +11,44 @@ class StateMacro {
 		var fields = Context.getBuildFields();
 		var newFields:Array<Field> = [];
 		var stateInits:Array<Expr> = [];
+
+		// Closure lifting: each anonymous closure passed as the action arg of
+		// `new Button(...)` is lifted to a public method on the App class.
+		// The Button arg is rewritten to a method reference. At runtime the
+		// generated Kotlin invokes `app.<methodName>()` from `onClick`, executing
+		// the original Haxe code as compiled JVM bytecode (no AST translation,
+		// no scope capture games — Haxe handles `this` naturally).
+		var liftedClosures:Array<Field> = [];
+		var liftCounter = 0;
+
+		function tryLiftClosure(closureExpr:Expr):Expr {
+			if (closureExpr == null) return closureExpr;
+			return switch (closureExpr.expr) {
+				case EFunction(FAnonymous | FArrow, fun) if (fun.args.length == 0 && fun.expr != null):
+					var name = "__aui_action_" + (liftCounter++);
+					liftedClosures.push({
+						name: name,
+						access: [APublic],
+						kind: FFun({args: [], ret: macro:Void, expr: fun.expr}),
+						pos: closureExpr.pos
+					});
+					macro this.$name;
+				default:
+					closureExpr;
+			}
+		}
+
+		function liftClosuresInExpr(expr:Expr):Expr {
+			if (expr == null) return expr;
+			return switch (expr.expr) {
+				case ENew(typePath, args) if (typePath.name == "Button" && args.length >= 2):
+					var newArgs = args.copy();
+					newArgs[1] = tryLiftClosure(newArgs[1]);
+					{expr: ENew(typePath, newArgs), pos: expr.pos};
+				default:
+					ExprTools.map(expr, liftClosuresInExpr);
+			}
+		}
 
 		for (field in fields) {
 			var isState = false;
@@ -41,9 +80,21 @@ class StateMacro {
 						newFields.push(field);
 				}
 			} else {
+				// Walk body() and any other view-returning method to lift closures
+				// passed to Button. Other UI elements (onTapGesture modifier on
+				// non-Button views, onAppear, etc.) aren't lifted here yet — they
+				// fall back to the codegen's existing `.clickable { }` no-op.
+				switch (field.kind) {
+					case FFun(f) if (f.expr != null):
+						f.expr = liftClosuresInExpr(f.expr);
+					default:
+				}
 				newFields.push(field);
 			}
 		}
+
+		// Append lifted methods after the rest of the class.
+		for (lc in liftedClosures) newFields.push(lc);
 
 		// If there are state initializations, inject them into the constructor
 		if (stateInits.length > 0) {

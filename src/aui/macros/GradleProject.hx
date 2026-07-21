@@ -3,6 +3,7 @@ package aui.macros;
 #if macro
 import sys.FileSystem;
 import sys.io.File;
+import aui.macros.AndroidPackagingConfig;
 
 class GradleProject {
 	public static function generate(config:{
@@ -10,7 +11,8 @@ class GradleProject {
 		packageName:String,
 		minSdk:Int,
 		targetSdk:Int,
-		compileSdk:Int
+		compileSdk:Int,
+		?android:AndroidPackagingConfig
 	}):Void {
 		var androidDir = "android";
 		var appDir = androidDir + "/app";
@@ -76,8 +78,29 @@ class GradleProject {
 		packageName:String,
 		minSdk:Int,
 		targetSdk:Int,
-		compileSdk:Int
+		compileSdk:Int,
+		?android:AndroidPackagingConfig
 	}):Void {
+		// Optional ndk { abiFilters += listOf(...) } block, injected only when configured.
+		var defaultConfigExtras:Array<String> = [];
+		if (config.android != null && config.android.abiFilters != null && config.android.abiFilters.length > 0) {
+			var quoted = config.android.abiFilters.map(function(s) return '"' + s + '"').join(", ");
+			defaultConfigExtras.push("        ndk {");
+			defaultConfigExtras.push("            abiFilters += listOf(" + quoted + ")");
+			defaultConfigExtras.push("        }");
+		}
+
+		// Optional packaging { jniLibs { useLegacyPackaging = ... } } block.
+		var packagingBlock:Array<String> = [];
+		if (config.android != null && config.android.useLegacyPackaging == true) {
+			packagingBlock.push("");
+			packagingBlock.push("    packaging {");
+			packagingBlock.push("        jniLibs {");
+			packagingBlock.push("            useLegacyPackaging = true");
+			packagingBlock.push("        }");
+			packagingBlock.push("    }");
+		}
+
 		var lines = [
 			"plugins {",
 			'    id("com.android.application")',
@@ -95,6 +118,7 @@ class GradleProject {
 			"        targetSdk = " + config.targetSdk,
 			"        versionCode = 1",
 			'        versionName = "1.0"',
+		].concat(defaultConfigExtras).concat([
 			"    }",
 			"",
 			"    buildTypes {",
@@ -106,6 +130,7 @@ class GradleProject {
 			"            )",
 			"        }",
 			"    }",
+		]).concat(packagingBlock).concat([
 			"",
 			"    compileOptions {",
 			"        sourceCompatibility = JavaVersion.VERSION_17",
@@ -138,7 +163,7 @@ class GradleProject {
 			'    debugImplementation("androidx.compose.ui:ui-tooling")',
 			"}",
 			""
-		];
+		]);
 		File.saveContent(dir + "/build.gradle.kts", lines.join("\n"));
 	}
 
@@ -147,18 +172,27 @@ class GradleProject {
 		packageName:String,
 		minSdk:Int,
 		targetSdk:Int,
-		compileSdk:Int
+		compileSdk:Int,
+		?android:AndroidPackagingConfig
 	}):Void {
 		var safeName = sanitizeName(config.appName);
+		// Optional android:extractNativeLibs attribute.
+		var applicationAttrs:Array<String> = [
+			'        android:allowBackup="true"',
+		];
+		if (config.android != null && config.android.extractNativeLibs == true) {
+			applicationAttrs.push('        android:extractNativeLibs="true"');
+		}
+		applicationAttrs.push('        android:label="' + config.appName + '"');
+		applicationAttrs.push('        android:supportsRtl="true"');
+		applicationAttrs.push('        android:theme="@style/Theme.' + safeName + '">');
+
 		var lines = [
 			'<?xml version="1.0" encoding="utf-8"?>',
 			'<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
 			"",
 			"    <application",
-			'        android:allowBackup="true"',
-			'        android:label="' + config.appName + '"',
-			'        android:supportsRtl="true"',
-			'        android:theme="@style/Theme.' + safeName + '">',
+		].concat(applicationAttrs).concat([
 			"        <activity",
 			'            android:name="' + config.packageName + '.MainActivity"',
 			'            android:exported="true"',
@@ -172,7 +206,7 @@ class GradleProject {
 			"",
 			"</manifest>",
 			""
-		];
+		]);
 		File.saveContent(srcDir + "/AndroidManifest.xml", lines.join("\n"));
 	}
 
