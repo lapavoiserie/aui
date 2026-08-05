@@ -9,11 +9,33 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Recursively renders a Haxe view tree at runtime using Jetpack Compose.
- * Used by `mui watch` for hot reload — the Compose host stays running
- * while the .cppia script is reloaded with new view code.
+ * Intended for hot reload — the Compose host stays running while the app's
+ * view code is reloaded.
  *
  * Each ViewNode maps to its Compose equivalent via a when() on viewType.
  * Modifiers are applied dynamically from the modifier chain.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * NOT WIRED UP — this file is currently dead code. Read this before relying
+ * on it or citing it as an existing renderer.
+ *
+ *   - Nothing implements the `external fun`s below: there is no
+ *     ViewNodeBridge on the Haxe side (none anywhere in aui/src).
+ *   - ComposeGenerator never emits or references this file.
+ *   - MainActivity renders the generated static `MainScreen(app)` instead.
+ *
+ * There is also a design mismatch to settle before it can work: the
+ * `external` declarations plus `System.loadLibrary("haxebridge")` assume a
+ * *native* library, but aui compiles Haxe to the **JVM**. The existing
+ * StateBridge is Kotlin called from Haxe on the same JVM, resolved by the
+ * class loader, with no JNI at all — this bridge should work the same way
+ * rather than being modelled on sui's C bridge.
+ *
+ * The shape is nonetheless right: it converges almost name for name with
+ * sui's ViewNodeBridge, and that convergence is what the shared node model
+ * was extracted from. See `nui` (https://lapavoiserie.github.io/nui/) and
+ * its pull-mode contract.
+ * ─────────────────────────────────────────────────────────────────────────
  */
 
 // ViewNode data class — mirrors the C bridge API
