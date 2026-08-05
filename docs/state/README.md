@@ -33,4 +33,26 @@ class MyApp extends App {
 3. The `ComposeGenerator` macro reads state as `app.count.get()` and writes it as `app.count.set(...)` — e.g. `count.inc()` becomes `app.count.set((app.count.get() as Int) + 1)`
 4. Reads inside a `@Composable` are tracked by Compose's snapshot system, so any write — from a Compose handler or from pure Haxe logic — recomposes the UI
 
+## What backs it
+
+`State<T>` also extends [`rui.state.State`](https://lapavoiserie.github.io/rui/#/state),
+the reactive core shared with the other La Pavoiserie backends (`sui`, `wui`, `cui`, `qui`).
+The Compose `MutableState` is unchanged and **still what drives recomposition** — the shared
+signal sits alongside it, not in front of it.
+
+Concretely, each read does double duty: it registers a dependency for any `rui` effect *and*
+returns the value from the `MutableState`, so a read inside a `@Composable` is tracked by
+Compose exactly as before. Each write updates the shared core and then mirrors into the
+`MutableState`, unconditionally — Compose applies its own structural-equality policy, and
+the generated Kotlin writes back through this same `set()`, so short-circuiting would risk
+desynchronising the two sides.
+
+What this buys you: state can now be observed from plain Haxe, outside any `@Composable`,
+via [`rui` effects](https://lapavoiserie.github.io/rui/#/signals) — useful for logic that
+reacts to state without rendering.
+
+`applyExternal(value)` is inherited and available for a value that comes *from* the platform
+and must not be echoed back; aui does not use it yet, since generated Kotlin writes go
+through `set()`.
+
 See [State & Actions](state/state-and-actions.md) for full details.
