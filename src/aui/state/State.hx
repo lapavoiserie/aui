@@ -12,30 +12,50 @@ package aui.state;
 	The public API is unchanged from the original (`.get()`, `.set(v)`, `.value`),
 	so existing AUI examples and the StateAction builders keep working.
 **/
-class State<T> {
+class State<T> extends rui.state.State<T> {
 	// Opaque reference to a Compose MutableState<Any?> created by StateBridge.create().
 	// Held as Dynamic so this Haxe class doesn't import any Compose types.
 	var bridge:Dynamic;
 
-	public var name:String;
-	public var value(get, set):T;
-
 	static var _registry:Map<String, Dynamic> = new Map();
 
 	public function new(initialValue:T, name:String) {
+		super(initialValue, name);
 		this.bridge = StateBridge.create(initialValue);
-		this.name = name;
 		_registry.set(name, this);
 	}
 
-	inline function get_value():T return (cast StateBridge.read(bridge):T);
-	inline function set_value(v:T):T {
-		StateBridge.write(bridge, v);
-		return v;
+	// `value` must go through get()/set() so a read is observed by Compose and
+	// a write reaches both sides. The inherited accessors read the signal only.
+	override function get_value():T return get();
+
+	/**
+		Read. Two things happen and both matter:
+
+		- `super.get()` reads through the `rui` signal, so a read inside a `rui`
+		  effect registers the dependency — this is what the shared core buys.
+		- the returned value comes from the Compose `MutableState`, so a read
+		  inside a `@Composable` is tracked by Compose and drives recomposition.
+
+		The two stay in step because every write goes through `set()`.
+	**/
+	override public function get():T {
+		super.get();
+		return (cast StateBridge.read(bridge):T);
 	}
 
-	public function get():T return (cast StateBridge.read(bridge):T);
-	public function set(newValue:T):Void StateBridge.write(bridge, newValue);
+	/**
+		Write. Updates the shared core (so `rui` effects re-run) and mirrors into
+		the Compose `MutableState`, which remains what actually drives
+		recomposition. The mirror is unconditional: Compose applies its own
+		structural-equality policy, and the generated Kotlin writes back through
+		this same path, so short-circuiting here would risk desynchronising the
+		two sides.
+	**/
+	override public function set(newValue:T):Void {
+		super.set(newValue);
+		StateBridge.write(bridge, newValue);
+	}
 
 	// Action builders — unchanged
 	public function inc(?amount:Dynamic):StateAction {

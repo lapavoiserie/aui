@@ -1,9 +1,11 @@
 {
-  "name": "aui",
-  "version": "0.1.0",
-  "description": "Create native Android apps in Haxe using Jetpack Compose",
-  "license": "MIT",
-  "main": "tools.cli.CLI",
-  "classPath": "src",
-  "dependencies": {}
+    "name": "aui",
+    "version": "0.1.0",
+    "description": "Create native Android apps in Haxe using Jetpack Compose",
+    "license": "MIT",
+    "main": "tools.cli.CLI",
+    "classPath": "src",
+    "dependencies": {
+        "rui": ""
+    }
 }
