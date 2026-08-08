@@ -158,8 +158,47 @@ class ViewNodeBridge {
 
 	public static function getText(node:Dynamic):String {
 		if (node == null) return "";
+
+		// A state template -- `Text.withState("compteur : {count}")` -- has no
+		// content of its own: the static generator interpolates it into Kotlin.
+		// There is no Kotlin here, so resolve the names against the state
+		// registry instead. Without this a counter renders an empty string
+		// forever, which reads as a renderer bug rather than a missing feature.
+		var template:Dynamic = Reflect.field(node, "stateTemplate");
+		if (template != null) return resolveTemplate(Std.string(template));
+
 		var content:Dynamic = Reflect.field(node, "content");
 		return content != null ? Std.string(content) : "";
+	}
+
+	/** Replace every `{name}` with the current value of that state. **/
+	static function resolveTemplate(template:String):String {
+		var out = new StringBuf();
+		var i = 0;
+
+		while (i < template.length) {
+			var open = template.indexOf("{", i);
+			if (open < 0) {
+				out.add(template.substr(i));
+				break;
+			}
+			var close = template.indexOf("}", open);
+			if (close < 0) {
+				out.add(template.substr(i));
+				break;
+			}
+
+			out.add(template.substring(i, open));
+			var name = template.substring(open + 1, close);
+			var state:Dynamic = aui.state.State.getByName(name);
+			// An unknown name is left as written rather than blanked: seeing
+			// `{cont}` on screen says "this name is wrong", an empty string says
+			// nothing at all.
+			out.add(state == null ? "{" + name + "}" : Std.string(state.get()));
+			i = close + 1;
+		}
+
+		return out.toString();
 	}
 
 	public static function getButtonLabel(node:Dynamic):String {

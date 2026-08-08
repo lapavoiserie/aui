@@ -130,6 +130,34 @@ class NuiCheck {
 		check("les deux donnent pourtant la même valeur",
 			sd.modifierFloat(parDefaut, 0, 0) == 0.0 && se.modifierFloat(explicite, 0, 0) == 0.0);
 
+		// --- state templates ---
+		//
+		// `Text.withState` builds a template the *static* generator interpolates
+		// into Kotlin. There is no Kotlin at runtime, so the bridge resolves the
+		// names against the state registry. Without this the counter example
+		// renders an empty string forever -- which reads as a renderer bug.
+		var gabarit = aui.ui.Text.withState("compte : {count}");
+		check("un gabarit est résolu à l'exécution",
+			ViewNodeBridge.getText(gabarit) == "compte : 33", ViewNodeBridge.getText(gabarit));
+
+		var deux = aui.ui.Text.withState("{count}/{mot}");
+		check("plusieurs noms dans un gabarit",
+			ViewNodeBridge.getText(deux) == "33/ab", ViewNodeBridge.getText(deux));
+
+		// An unknown name stays as written: `{cont}` on screen says the name is
+		// wrong, an empty string says nothing at all.
+		var faute = aui.ui.Text.withState("x{cont}y");
+		check("un nom inconnu reste visible",
+			ViewNodeBridge.getText(faute) == "x{cont}y", ViewNodeBridge.getText(faute));
+
+		var brut = aui.ui.Text.withState("sans accolade");
+		check("un gabarit sans nom passe tel quel",
+			ViewNodeBridge.getText(brut) == "sans accolade", ViewNodeBridge.getText(brut));
+
+		var boiteux = aui.ui.Text.withState("ouvert {count");
+		check("une accolade non fermée ne boucle pas",
+			ViewNodeBridge.getText(boiteux) == "ouvert {count", ViewNodeBridge.getText(boiteux));
+
 		// --- what the bridge answers before setApp() ---
 		//
 		// Kotlin composes before the app is handed over, for at least one frame.

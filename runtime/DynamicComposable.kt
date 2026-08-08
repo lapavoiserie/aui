@@ -180,10 +180,20 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
         "SafeArea" -> Column(modifier = mod.safeDrawingPadding()) { dynamicChildren(node) }
 
         else -> {
-            // A type this renderer does not know. Its children are still real
-            // views, so drawing them beats dropping the subtree in silence.
-            if (node.childCount > 0) {
-                Column(modifier = mod) { dynamicChildren(node) }
+            // A type this renderer does not know.
+            //
+            // Its children are still real views, so they are drawn. But a
+            // container that keeps its content somewhere other than `children`
+            // -- TabView holds Tabs -- would then draw *nothing at all*, and a
+            // blank screen is not a diagnosis. So the type is named on screen,
+            // the way wui and qui name an unrenderable node: seeing `?TabView`
+            // says what is missing, an empty Surface says nothing.
+            Column(modifier = mod) {
+                if (node.childCount > 0) {
+                    dynamicChildren(node)
+                } else {
+                    Text(text = "?" + node.viewType)
+                }
             }
         }
     }

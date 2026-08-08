@@ -1,6 +1,7 @@
 package aui.macros;
 
 #if macro
+import haxe.macro.Compiler;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import haxe.macro.Type;
@@ -25,6 +26,22 @@ class ComposeGenerator {
 	static var _localBindings:Map<Int, TypedExpr> = new Map();
 
 	public static function register():Void {
+		// aui compiles for Android, so say so.
+		//
+		// Haxe's JVM `EReg` adds `Pattern.UNICODE_CHARACTER_CLASS` unless the
+		// `android` define is set -- a flag Android's regex engine rejects
+		// outright. Any class holding a regex literal then fails its static
+		// initialiser, so the class cannot be loaded *at all*: `aui.ui.Text` has
+		// one, and every app that reaches a Text at runtime dies with
+		// `ExceptionInInitializerError`.
+		//
+		// It stayed invisible because the static path never runs this code --
+		// the generator reads `body()` at compile time and emits Kotlin, so
+		// `aui.ui.Text` ships in the jar and is never touched. The dynamic
+		// renderer is the first thing to actually execute it, and it crashed on
+		// the emulator at the first frame.
+		Compiler.define("android");
+
 		// The view rule, enforced from here rather than asked for in every
 		// build.hxml. A fundamental rule an example can forget to opt into is
 		// advice, not a rule: registering it beside the generator means any
