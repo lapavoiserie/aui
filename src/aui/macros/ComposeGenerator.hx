@@ -2079,10 +2079,10 @@ class ComposeGenerator {
 
 		for (i in 0...offenders.length) {
 			var o = offenders[i];
-			var msg = 'Le renderer dynamique ne sait pas rendre "' + o.name + '".\n'
-				+ '  Types couverts : ' + known.join(", ") + '.\n'
-				+ '  Ajoutez-le au when() de aui/runtime/DynamicComposable.kt, ou\n'
-				+ '  compilez sans -D aui_dynamic pour le chemin statique.';
+			var msg = 'The dynamic renderer cannot draw "' + o.name + '".\n'
+				+ '  Covered types: ' + known.join(", ") + '.\n'
+				+ '  Add it to the when() in aui/runtime/DynamicComposable.kt, or\n'
+				+ '  build without -D aui_dynamic for the static path.';
 			if (i == offenders.length - 1) Context.error(msg, o.pos);
 			else Context.reportError(msg, o.pos);
 		}
@@ -2099,7 +2099,7 @@ class ComposeGenerator {
 	static function coveredViewTypes():Null<Map<String, Bool>> {
 		var path = locateAuiRuntimeFile("DynamicComposable.kt");
 		if (path == null) {
-			Context.error('[AUI] DynamicComposable.kt introuvable : impossible de verifier ce que le renderer dynamique couvre.', Context.currentPos());
+			Context.error('[AUI] DynamicComposable.kt not found: cannot check what the dynamic renderer covers.', Context.currentPos());
 			return null;
 		}
 
@@ -2110,7 +2110,7 @@ class ComposeGenerator {
 		var from = source.indexOf("fun DynamicView(");
 		var to = source.indexOf("fun applyModifiers(");
 		if (from < 0 || to < 0 || to < from) {
-			Context.error('[AUI] DynamicComposable.kt ne presente pas la forme attendue (DynamicView puis applyModifiers) : la verification ne peut rien affirmer.', Context.currentPos());
+			Context.error('[AUI] DynamicComposable.kt is not in the expected shape (DynamicView then applyModifiers): the check cannot assert anything.', Context.currentPos());
 			return null;
 		}
 
@@ -2121,7 +2121,7 @@ class ComposeGenerator {
 		}
 
 		if (!out.keys().hasNext()) {
-			Context.error('[AUI] Aucun type reconnu dans le when() de DynamicComposable.kt : la verification ne peut rien affirmer.', Context.currentPos());
+			Context.error('[AUI] No type recognised in the when() of DynamicComposable.kt: the check cannot assert anything.', Context.currentPos());
 			return null;
 		}
 		return out;

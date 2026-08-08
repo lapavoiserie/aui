@@ -32,12 +32,18 @@ echo "aui — couverture du renderer dynamique"
 #
 # Judged on the exit code, and the refusal must name the type: any compile
 # error would satisfy the code alone.
+# Run from a scratch directory: ComposeGenerator emits a whole Android project
+# into ./android relative to the working directory, so running the fixtures from
+# the repository root buries it under a generated app -- which is what happened
+# the first time.
 cover() {
-	local fixture="$1" expect="$2" type="${3:-}" out code
-	out=$(haxe -cp src -cp test/coverage -lib rui -lib nui \
-		-D jvm --jvm test/coverage-check.jar -D aui_dynamic \
+	local fixture="$1" expect="$2" type="${3:-}" out code work
+	work=$(mktemp -d)
+	out=$(cd "$work" && haxe -cp "$root/src" -cp "$root/test/coverage" -lib rui -lib nui \
+		-D jvm --jvm coverage-check.jar -D aui_dynamic \
 		--macro 'aui.macros.ComposeGenerator.register()' -main "$fixture" 2>&1)
 	code=$?
+	rm -rf "$work"
 
 	if [ "$expect" = "pass" ]; then
 		[ $code -eq 0 ] && echo "  ok   $fixture compile" || { echo "  FAIL $fixture aurait du compiler"; echo "$out" | sed 's/^/         /'; return 1; }
@@ -50,11 +56,11 @@ cover() {
 	fi
 }
 
+root=$(pwd)
 failures=0
 cover Couvert    pass              || failures=1
 cover NonCouvert reject Image      || failures=1
 
-rm -f test/coverage-check.jar
 [ $failures -eq 0 ] || { echo ""; echo "couverture: echec"; exit 1; }
 echo ""
 echo "all good"
