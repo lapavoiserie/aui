@@ -2170,6 +2170,15 @@ class ComposeGenerator {
 		};
 	}
 
+	static function extendsView(cls:ClassType):Bool {
+		var current = cls;
+		while (current != null) {
+			if (current.name == "View" && current.pack.join(".") == "aui") return true;
+			current = current.superClass == null ? null : current.superClass.t.get();
+		}
+		return false;
+	}
+
 	static function walkForViews(e:TypedExpr, covered:Map<String, Bool>,
 			offenders:Array<{name:String, pos:haxe.macro.Expr.Position}>):Void {
 		if (e == null) return;
@@ -2177,7 +2186,11 @@ class ComposeGenerator {
 		switch (e.expr) {
 			case TNew(ref, _, _):
 				var cls = ref.get();
-				if (cls.pack.join(".") == "aui.ui" && !covered.exists(cls.name)) {
+				// Only renderable nodes. `aui.ui.Tab` is a plain class carrying a
+				// title and a content view -- it never becomes a node, so the
+				// renderer has nothing to draw for it and demanding a branch
+				// would be asking for dead code.
+				if (cls.pack.join(".") == "aui.ui" && extendsView(cls) && !covered.exists(cls.name)) {
 					offenders.push({name: cls.name, pos: e.pos});
 				}
 			default:

@@ -58,6 +58,18 @@ value class ViewNode(val handle: Any) {
 
     fun property(key: String): String = ViewNodeBridge.getProperty(handle, key)
 
+    val sectionHeader: String get() = ViewNodeBridge.sectionHeader(handle)
+    fun tabTitle(index: Int): String = ViewNodeBridge.tabTitle(handle, index)
+    val conditionValue: Boolean get() = ViewNodeBridge.conditionValue(handle)
+
+    val fieldPlaceholder: String get() = ViewNodeBridge.fieldPlaceholder(handle)
+    val fieldText: String get() = ViewNodeBridge.fieldText(handle)
+    fun setFieldText(value: String) = ViewNodeBridge.setFieldText(handle, value)
+
+    val toggleLabel: String get() = ViewNodeBridge.toggleLabel(handle)
+    val toggleValue: Boolean get() = ViewNodeBridge.toggleValue(handle)
+    fun setToggleValue(value: Boolean) = ViewNodeBridge.setToggleValue(handle, value)
+
     val modifierCount: Int get() = ViewNodeBridge.modifierCount(handle)
     fun modifierType(index: Int): String = ViewNodeBridge.modifierType(handle, index)
     fun modifierFloat(index: Int, param: Int = 0): Double =
@@ -90,6 +102,25 @@ object DynamicHost {
     fun invalidate() {
         generation++
     }
+
+    /**
+     * Which tab is showing.
+     *
+     * Held here rather than in a `remember` inside the TabView branch: the tree
+     * is rebuilt from Haxe on every generation, so a slot inside a recursive
+     * `DynamicView` is not a stable home for selection -- it reset to 0 on the
+     * recomposition the click itself caused, and the tab appeared not to
+     * respond at all.
+     *
+     * One index, so one TabView at a time. aui apps root a single one; the day
+     * that stops being true this becomes a map keyed by something stable across
+     * rebuilds, which a node handle is not.
+     */
+    var tabIndex by mutableIntStateOf(0)
+
+    fun selectTab(index: Int) {
+        tabIndex = index
+    }
 }
 
 /** Root composable for the dynamic path: rebuilds the tree, then draws it. */
@@ -106,7 +137,17 @@ fun DynamicRoot() {
         return
     }
 
-    DynamicView(root)
+    // Keep the tree out from under the system bars.
+    //
+    // Android draws edge-to-edge by default since API 35, so without this the
+    // top of the tree sits *under* the status bar -- and the system, not the
+    // app, receives the touches there. A TabView rooted at the top was drawn
+    // correctly and could not be tapped at all: the click never reached Compose.
+    // The counter never showed it, its content being in the middle of the
+    // screen.
+    Box(modifier = Modifier.safeDrawingPadding()) {
+        DynamicView(root)
+    }
 }
 
 /**
@@ -164,6 +205,86 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             ) {
                 Text(node.buttonLabel)
             }
+        }
+
+        // A card is a surface around its children; nothing more is claimed.
+        "Card" -> Card(modifier = mod) {
+            Column(modifier = Modifier.padding(16.dp)) { dynamicChildren(node) }
+        }
+
+        // A section is its children under a header. An empty header draws no
+        // header rather than an empty line -- `Section(content)` is legal.
+        "Section" -> Column(modifier = mod) {
+            val header = node.sectionHeader
+            if (header.isNotEmpty()) {
+                Text(
+                    text = header,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
+            dynamicChildren(node)
+        }
+
+        // The source reports the live branch as child 0 and the other as child
+        // 1, so the choice is made here against the state -- read now, not when
+        // the tree was built.
+        "ConditionalView" -> {
+            val index = if (node.conditionValue) 0 else 1
+            if (index < node.childCount) {
+                DynamicView(node.child(index), mod)
+            }
+        }
+
+        // Tabs: the bar comes from the titles, the pages are the children. A
+        // `Tab` is not a view and never reaches here as a node -- the source
+        // reports each tab's *content* as a child.
+        "TabView" -> {
+            val count = node.childCount
+            val selected = DynamicHost.tabIndex
+            Column(modifier = mod) {
+                if (count > 0) {
+                    TabRow(selectedTabIndex = selected.coerceIn(0, count - 1)) {
+                        for (i in 0 until count) {
+                            androidx.compose.material3.Tab(
+                                selected = i == selected,
+                                onClick = { DynamicHost.selectTab(i) },
+                                text = { Text(node.tabTitle(i)) }
+                            )
+                        }
+                    }
+                    DynamicView(node.child(selected.coerceIn(0, count - 1)))
+                }
+            }
+        }
+
+        // Edited by the user, so the value travels back into the Haxe state and
+        // the tree is rebuilt -- the state is the single source of truth, and a
+        // field that kept its own copy would drift from what the rest of the
+        // view reads.
+        "TextField" -> OutlinedTextField(
+            value = node.fieldText,
+            onValueChange = {
+                node.setFieldText(it)
+                DynamicHost.invalidate()
+            },
+            placeholder = { Text(node.fieldPlaceholder) },
+            singleLine = true,
+            modifier = mod
+        )
+
+        "Toggle" -> Row(
+            modifier = mod.fillMaxWidth(),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(text = node.toggleLabel, modifier = Modifier.weight(1f))
+            Switch(
+                checked = node.toggleValue,
+                onCheckedChange = {
+                    node.setToggleValue(it)
+                    DynamicHost.invalidate()
+                }
+            )
         }
 
         // A Spacer reached outside a Column/Row has nothing to share space

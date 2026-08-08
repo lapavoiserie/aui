@@ -158,6 +158,62 @@ class NuiCheck {
 		check("une accolade non fermée ne boucle pas",
 			ViewNodeBridge.getText(boiteux) == "ouvert {count", ViewNodeBridge.getText(boiteux));
 
+		// --- views whose sub-views live outside `children` ---
+		//
+		// This is what made the todo example draw a blank screen: a walker
+		// followed `childAt`, found nothing, and drew nothing. Reporting zero
+		// children for a TabView is a lie to the pull contract, not a Compose
+		// detail.
+		var onglets = new aui.ui.TabView([
+			new aui.ui.Tab("Tâches", "list", new Text("liste")),
+			new aui.ui.Tab("Notes", "edit", new Text("notes"))
+		]);
+		var so = new ViewSource(onglets);
+		check("un TabView compte ses onglets", so.childCount(onglets) == 2,
+			Std.string(so.childCount(onglets)));
+		check("un enfant de TabView est le contenu de l'onglet",
+			ViewNodeBridge.getText(so.childAt(onglets, 1)) == "notes");
+		check("les titres sont lisibles", so.tabTitle(onglets, 0) == "Tâches", so.tabTitle(onglets, 0));
+		check("un index d'onglet hors bornes ne jette pas",
+			so.childAt(onglets, 9) == null && so.tabTitle(onglets, 9) == "");
+
+		var drapeau = new State<Bool>(true, "drapeau");
+		var cond = new aui.ui.ConditionalView(drapeau, new Text("oui"), new Text("non"));
+		var sc = new ViewSource(cond);
+		check("un ConditionalView expose ses deux branches", sc.childCount(cond) == 2);
+		check("la condition est lue à l'instant demandé", sc.conditionValue(cond) == true);
+		drapeau.set(false);
+		check("et suit l'état, pas l'arbre", sc.conditionValue(cond) == false);
+
+		var sansSinon = new aui.ui.ConditionalView(drapeau, new Text("oui"));
+		check("sans branche else, un seul enfant",
+			new ViewSource(sansSinon).childCount(sansSinon) == 1);
+
+		var section = new aui.ui.Section("Travail", [new Text("a"), new Text("b")]);
+		check("une Section garde ses enfants", new ViewSource(section).childCount(section) == 2);
+		check("et expose son en-tête", ViewNodeBridge.sectionHeader(section) == "Travail");
+
+		// --- the writes: the one direction the pull contract does not describe ---
+		var saisie = new State<String>("", "saisie");
+		var champ = new aui.ui.TextField("Écrire…", saisie);
+		check("le placeholder est lu", ViewNodeBridge.fieldPlaceholder(champ) == "Écrire…");
+		ViewNodeBridge.setFieldText(champ, "bonjour");
+		check("écrire dans un champ atteint l'état", saisie.get() == "bonjour", saisie.get());
+		check("et se relit par le pont", ViewNodeBridge.fieldText(champ) == "bonjour");
+
+		var actif = new State<Bool>(false, "actif");
+		var bascule = new aui.ui.Toggle("Notifications", actif);
+		ViewNodeBridge.setToggleValue(bascule, true);
+		check("basculer atteint l'état", actif.get() == true);
+		check("et se relit par le pont", ViewNodeBridge.toggleValue(bascule) == true);
+
+		// Built without a state: the view is legal, so reading and writing it
+		// must be survivable rather than throwing on a null cell.
+		var orphelin = new aui.ui.Toggle("Sans état");
+		ViewNodeBridge.setToggleValue(orphelin, true);
+		check("une bascule sans état ne jette pas",
+			ViewNodeBridge.toggleValue(orphelin) == false);
+
 		// --- what the bridge answers before setApp() ---
 		//
 		// Kotlin composes before the app is handed over, for at least one frame.

@@ -52,7 +52,7 @@ cover() {
 
 failures=0
 cover Couvert    pass              || failures=1
-cover NonCouvert reject TextField  || failures=1
+cover NonCouvert reject Image      || failures=1
 
 rm -f test/coverage-check.jar
 [ $failures -eq 0 ] || { echo ""; echo "couverture: echec"; exit 1; }

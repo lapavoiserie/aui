@@ -206,4 +206,69 @@ class ViewNodeBridge {
 		var label:Dynamic = Reflect.field(node, "label");
 		return label != null ? Std.string(label) : "";
 	}
+
+	/** A `Section`'s header, or "" when it has none. **/
+	public static function sectionHeader(node:Dynamic):String {
+		if (node == null) return "";
+		var header:Dynamic = Reflect.field(node, "header");
+		return header != null ? Std.string(header) : "";
+	}
+
+	public static function tabTitle(node:Dynamic, index:Int):String {
+		return reader().tabTitle(cast node, index);
+	}
+
+	public static function tabIcon(node:Dynamic, index:Int):String {
+		return reader().tabIcon(cast node, index);
+	}
+
+	public static function conditionValue(node:Dynamic):Bool {
+		return reader().conditionValue(cast node);
+	}
+
+	public static function fieldPlaceholder(node:Dynamic):String {
+		if (node == null) return "";
+		var p:Dynamic = Reflect.field(node, "placeholder");
+		return p != null ? Std.string(p) : "";
+	}
+
+	// --- Writes, the one direction the pull contract does not describe -------
+	//
+	// A `TextField` and a `Toggle` are edited by the user, so the value has to
+	// travel *back*. The contract is about reading a tree; this is the state
+	// underneath it, and the write goes through `State.set` -- the same call an
+	// action makes -- so nothing here bypasses the reactive core.
+
+	public static function fieldText(node:Dynamic):String {
+		var st = stateOf(node, "textState");
+		return st == null ? "" : Std.string(st.get());
+	}
+
+	public static function setFieldText(node:Dynamic, value:String):Void {
+		var st = stateOf(node, "textState");
+		if (st != null) st.set(value);
+	}
+
+	public static function toggleLabel(node:Dynamic):String {
+		if (node == null) return "";
+		var label:Dynamic = Reflect.field(node, "label");
+		return label != null ? Std.string(label) : "";
+	}
+
+	public static function toggleValue(node:Dynamic):Bool {
+		var st = stateOf(node, "isOnState");
+		return st == null ? false : st.get() == true;
+	}
+
+	public static function setToggleValue(node:Dynamic, value:Bool):Void {
+		var st = stateOf(node, "isOnState");
+		if (st != null) st.set(value);
+	}
+
+	/** A state a view holds under `field`, or null if it was built without one. **/
+	static function stateOf(node:Dynamic, field:String):Null<Dynamic> {
+		if (node == null) return null;
+		var st:Dynamic = Reflect.field(node, field);
+		return st;
+	}
 }

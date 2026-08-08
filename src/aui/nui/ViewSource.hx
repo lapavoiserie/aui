@@ -67,14 +67,80 @@ class ViewSource implements NodeSource<View> {
 	public function keyOf(n:View):Null<String>
 		return null;
 
+	/**
+		The children a consumer can walk.
+
+		Some aui views keep their sub-views **outside** `children` -- `TabView`
+		holds `Tab`s, `ConditionalView` holds a then/else pair. Reporting zero
+		children for those is a lie to the pull contract, and it is what made the
+		todo example draw a blank screen: a walker followed `childAt` and found
+		nothing to draw.
+
+		The classes are left alone -- the static generator reads their fields
+		directly -- and the *description* is corrected here, which is what a
+		source is for. Any consumer benefits, not just Compose.
+	**/
 	public function childCount(n:View):Int {
-		if (n == null || n.children == null) return 0;
-		return n.children.length;
+		if (n == null) return 0;
+
+		var tabs = tabsOf(n);
+		if (tabs != null) return tabs.length;
+
+		if (n.viewType == "ConditionalView") {
+			return Reflect.field(n, "elseView") == null ? 1 : 2;
+		}
+
+		return n.children == null ? 0 : n.children.length;
 	}
 
 	public function childAt(n:View, index:Int):View {
-		if (n == null || n.children == null || index < 0 || index >= n.children.length) return null;
+		if (n == null || index < 0) return null;
+
+		var tabs = tabsOf(n);
+		if (tabs != null) return index < tabs.length ? tabs[index].content : null;
+
+		if (n.viewType == "ConditionalView") {
+			return switch (index) {
+				case 0: cast Reflect.field(n, "thenView");
+				case 1: cast Reflect.field(n, "elseView");
+				case _: null;
+			};
+		}
+
+		if (n.children == null || index >= n.children.length) return null;
 		return n.children[index];
+	}
+
+	/** A `TabView`'s tabs, or null for anything else. **/
+	static function tabsOf(n:View):Null<Array<aui.ui.Tab>> {
+		if (n == null || n.viewType != "TabView") return null;
+		var tabs:Dynamic = Reflect.field(n, "tabs");
+		return tabs == null ? null : cast tabs;
+	}
+
+	/** A tab's title, for a consumer drawing the bar above the contents. **/
+	public function tabTitle(n:View, index:Int):String {
+		var tabs = tabsOf(n);
+		if (tabs == null || index < 0 || index >= tabs.length) return "";
+		return tabs[index].title;
+	}
+
+	public function tabIcon(n:View, index:Int):String {
+		var tabs = tabsOf(n);
+		if (tabs == null || index < 0 || index >= tabs.length) return "";
+		return tabs[index].icon;
+	}
+
+	/**
+		Which branch of a `ConditionalView` is live.
+
+		Read through the state, so the answer is current at the moment it is
+		asked rather than at the moment the tree was built.
+	**/
+	public function conditionValue(n:View):Bool {
+		if (n == null) return false;
+		var st:Dynamic = Reflect.field(n, "conditionState");
+		return st == null ? false : st.get() == true;
 	}
 
 	public function hasProp(n:View, key:String):Bool {
