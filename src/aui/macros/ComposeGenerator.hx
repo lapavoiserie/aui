@@ -25,6 +25,12 @@ class ComposeGenerator {
 	static var _localBindings:Map<Int, TypedExpr> = new Map();
 
 	public static function register():Void {
+		// The view rule, enforced from here rather than asked for in every
+		// build.hxml. A fundamental rule an example can forget to opt into is
+		// advice, not a rule: registering it beside the generator means any
+		// build that emits Compose is checked, by construction.
+		rui.macros.ViewRule.register("aui.App", "body");
+
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
 			for (module in modules) {
 				switch (module) {

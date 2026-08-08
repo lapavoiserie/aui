@@ -6,6 +6,7 @@
     "main": "tools.cli.CLI",
     "classPath": "src",
     "dependencies": {
-        "rui": ""
+        "rui": "",
+        "nui": ""
     }
 }

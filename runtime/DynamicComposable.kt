@@ -19,8 +19,10 @@ import androidx.compose.ui.unit.dp
  * NOT WIRED UP — this file is currently dead code. Read this before relying
  * on it or citing it as an existing renderer.
  *
- *   - Nothing implements the `external fun`s below: there is no
- *     ViewNodeBridge on the Haxe side (none anywhere in aui/src).
+ *   - Nothing implements the `external fun`s below. The **tree reader** now
+ *     exists on the Haxe side -- `aui.nui.ViewSource`, aui's implementation
+ *     of nui's pull contract -- but nothing exposes it to Kotlin yet, and
+ *     ComposeGenerator does not emit the entry points.
  *   - ComposeGenerator never emits or references this file.
  *   - MainActivity renders the generated static `MainScreen(app)` instead.
  *
@@ -33,8 +35,11 @@ import androidx.compose.ui.unit.dp
  *
  * The shape is nonetheless right: it converges almost name for name with
  * sui's ViewNodeBridge, and that convergence is what the shared node model
- * was extracted from. See `nui` (https://lapavoiserie.github.io/nui/) and
- * its pull-mode contract.
+ * was extracted from. sui now reads its tree only through that contract
+ * (`sui.nui.ViewSource`, with ViewNodeBridge forwarding to it), so the
+ * accessors below should be expressed against the same contract rather than
+ * against a third private accessor set. See `nui`
+ * (https://lapavoiserie.github.io/nui/) and its pull-mode contract.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
