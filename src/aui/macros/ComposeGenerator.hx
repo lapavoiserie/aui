@@ -24,6 +24,12 @@ class ComposeGenerator {
 	static var _hasTabView:Bool = false;
 	// Local bindings for inlining view-returning function calls (param ID → arg expr)
 	static var _localBindings:Map<Int, TypedExpr> = new Map();
+	// Lambda parameters currently in Kotlin scope (param ID → Kotlin identifier).
+	// Populated when entering closure-form ForEach bodies so TLocal refs to the
+	// lambda parameter resolve to their declared name instead of falling through
+	// to the empty fallback -- which emitted `text = ` with nothing after it, not
+	// even valid Kotlin.
+	static var _lambdaParamIds:Map<Int, String> = new Map();
 
 	public static function register():Void {
 		// aui compiles for Android, so say so.
@@ -678,6 +684,12 @@ class ComposeGenerator {
 				}
 
 			case TLocal(v):
+				// A lambda parameter bound by an enclosing ForEach is already in
+				// Kotlin scope -- emit the identifier directly so
+				// `new Text(item)` becomes `Text(text = "$item", …)`.
+				if (_lambdaParamIds.exists(v.id)) {
+					return _lambdaParamIds.get(v.id);
+				}
 				// Resolve local bindings from inlined function parameters
 				if (_localBindings.exists(v.id)) {
 					return translateTypedExpr(_localBindings.get(v.id));
@@ -1372,12 +1384,14 @@ class ComposeGenerator {
 
 		// Second arg: the builder function
 		var paramName = "item";
+		var paramId:Int = -1;
 		var builderBody:Null<TypedExpr> = null;
 
 		switch (args[1].expr) {
 			case TFunction(tf):
 				if (tf.args.length > 0) {
 					paramName = tf.args[0].v.name;
+					paramId = tf.args[0].v.id;
 				}
 				builderBody = tf.expr;
 			default:
@@ -1385,9 +1399,15 @@ class ComposeGenerator {
 
 		buf.add(indent + collectionExpr + ".forEachIndexed { index, " + paramName + " ->\n");
 		if (builderBody != null) {
+			// Register the lambda parameter so TLocal references inside the body
+			// resolve to the Kotlin identifier. Saved and restored, so a nested
+			// ForEach does not leak its parameter to the enclosing one.
+			var savedLambdaParams = _lambdaParamIds.copy();
+			if (paramId >= 0) _lambdaParamIds.set(paramId, paramName);
 			_indent++;
 			buf.add(translateTypedExpr(builderBody));
 			_indent--;
+			_lambdaParamIds = savedLambdaParams;
 		}
 		buf.add(indent + "}\n");
 		return buf.toString();
@@ -1998,10 +2018,15 @@ class ComposeGenerator {
 					case "Bool": return "Boolean";
 					default: return "Any";
 				}
-			case TInst(ref, _):
+			case TInst(ref, params):
 				switch (ref.get().name) {
 					case "String": return "String";
-					case "Array": return "List<Any>";
+					// Keep the element type. `List<Any>` compiled for as long as
+					// nothing named an element: the moment a closure-form ForEach
+					// binds one, `Text(text = item)` fails because Text wants a
+					// String and the cast had erased it.
+					case "Array" | "ImmutableList":
+						return "List<" + (params.length > 0 ? haxeTypeToKotlin(params[0]) : "Any") + ">";
 					default: return "Any";
 				}
 			default:
