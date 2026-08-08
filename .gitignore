@@ -15,3 +15,15 @@ build/
 **/android/local.properties
 test/nui-check.jar
 test/stubs-classes/
+
+# Generated Compose sources. ComposeGenerator rewrites MainActivity.kt and
+# MainScreen.kt on every build, and they differ between the static and the
+# dynamic path -- so a tracked copy turns "which mode did I build last?" into a
+# reviewable diff, and invites committing one mode by accident.
+**/android/app/src/main/kotlin/com/aui/generated/
+**/android/app/src/main/kotlin/aui/runtime/
+**/android/app/src/main/kotlin/com/aui/runtime/
+**/android/app/src/main/kotlin/aui/state/
+**/android/app/src/main/kotlin/aui/android/
+**/android/app/src/main/assets/
+**/android/app/src/main/jniLibs/
