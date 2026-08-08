@@ -1,6 +1,7 @@
 -cp src
 -cp ../../src
 -lib rui
+-lib nui
 -D jvm
 --jvm build/app-logic.jar
 --macro aui.macros.ComposeGenerator.register()

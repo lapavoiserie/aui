@@ -2,6 +2,7 @@ package aui.nui;
 
 import nui.NodeSource;
 import aui.View;
+import aui.state.StateAction;
 
 /**
 	Describes a `aui` view tree through
@@ -29,9 +30,11 @@ import aui.View;
 **/
 class ViewSource implements NodeSource<View> {
 	final _root:View;
+	final _actions:Array<View>;
 
 	public function new(root:View) {
 		_root = root;
+		_actions = [];
 	}
 
 	public function root():View
@@ -130,23 +133,94 @@ class ViewSource implements NodeSource<View> {
 		return Std.string(params[param]);
 	}
 
+	/**
+		An index into a registry, never a closure: a handler handed to a foreign
+		consumer would be untraceable. `-1` means the node has no action.
+	**/
+	/**
+		Whether a modifier parameter is actually there.
+
+		**Not in the pull contract, and that is the finding.** `modifierFloat`
+		answers `0.0` both for "absent" and for "explicitly zero", and aui needs
+		the difference: `Padding()` means the default 16dp — that is what
+		`ComposeGenerator` emits — while `Padding(0)` means none. Encoding it in
+		a sentinel value (NaN, -1) would make every consumer guess; the contract
+		should grow an optional-parameter answer instead. Recorded in
+		`atelier/nui-adoption.md`.
+	**/
+	public function modifierHasParam(n:View, index:Int, param:Int):Bool {
+		if (n == null || n.modifierChain == null || index < 0 || index >= n.modifierChain.length) return false;
+		var params = Type.enumParameters(n.modifierChain[index]);
+		if (param < 0 || param >= params.length) return false;
+		return params[param] != null;
+	}
+
 	public function actionId(n:View):Int {
-		if (n == null) return -1;
-		var id:Dynamic = Reflect.field(n, "actionId");
-		return id != null ? cast(id, Int) : -1;
+		if (actionOf(n) == null) return -1;
+		var i = _actions.indexOf(n);
+		if (i >= 0) return i;
+		_actions.push(n);
+		return _actions.length - 1;
+	}
+
+	/** Run an action by the identifier `actionId` handed out. **/
+	public function invokeActionId(id:Int):Void {
+		if (id < 0 || id >= _actions.length) return;
+		invokeAction(_actions[id]);
+	}
+
+	static function actionOf(n:View):Null<StateAction> {
+		if (n == null) return null;
+		var a:Dynamic = Reflect.field(n, "stateAction");
+		return a == null ? null : cast a;
 	}
 
 	/**
 		Run the node's action.
 
-		Called directly rather than through an id: on the JVM the tree and the
-		closure are ordinary objects the garbage collector can see, so the
-		indirection `sui` needs — where an ARC-captured closure is invisible to
-		the hxcpp GC — has no reason to exist here.
+		**aui's actions are not closures.** A `Button` carries a declarative
+		`StateAction` — `Increment(count)`, `Toggle(flag)` — which
+		`ComposeGenerator` translates to Kotlin at compile time. That translation
+		does not exist at runtime, so a dynamic renderer has to *apply* the enum
+		instead, which is what this does.
+
+		Copying `sui`'s version here would have read a field named `action` that
+		aui has never had: `Reflect.field` returns null, and every button would
+		have done nothing at all, silently. The two backends look alike right up
+		to the point where they do not.
 	**/
 	public function invokeAction(n:View):Void {
-		if (n == null) return;
-		var action:Dynamic = Reflect.field(n, "action");
-		if (action != null) action();
+		apply(actionOf(n));
+	}
+
+	static function apply(action:Null<StateAction>):Void {
+		if (action == null) return;
+
+		switch (action) {
+			case Increment(state, amount):
+				var st:Dynamic = state;
+				st.set(st.get() + (amount == null ? 1 : amount));
+
+			case Decrement(state, amount):
+				var st:Dynamic = state;
+				st.set(st.get() - (amount == null ? 1 : amount));
+
+			case SetValue(state, value):
+				var st:Dynamic = state;
+				st.set(value);
+
+			case Toggle(state):
+				var st:Dynamic = state;
+				st.set(!st.get());
+
+			case Append(state, value):
+				var st:Dynamic = state;
+				st.set(st.get() + value);
+
+			// The curve describes *how* the change is shown, which is the
+			// renderer's business, not the state's. The write is the same.
+			case Animated(inner, _):
+				apply(inner);
+		}
 	}
 }

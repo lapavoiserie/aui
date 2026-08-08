@@ -31,6 +31,13 @@ class ComposeGenerator {
 		// build that emits Compose is checked, by construction.
 		rui.macros.ViewRule.register("aui.App", "body");
 
+		// The dynamic renderer's Haxe half is reached only from Kotlin, so
+		// nothing in Haxe references it and it would never enter the build --
+		// nor survive DCE. Pull it in explicitly, as sui does for its own.
+		if (Context.defined("aui_dynamic")) {
+			Context.getModule("aui.runtime.ViewNodeBridge");
+		}
+
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
 			for (module in modules) {
 				switch (module) {
@@ -332,17 +339,35 @@ class ComposeGenerator {
 			"            filesDir.absolutePath,",
 			"            assets",
 			"        )",
-			"        setContent {",
-			"            MaterialTheme {",
-			"                Surface {",
-			"                    MainScreen(app)",
-			"                }",
-			"            }",
-			"        }",
-			"    }",
-			"}",
-			""
 		];
+
+		// The dynamic path walks the tree the app builds while running, instead
+		// of the Kotlin the generator emitted from the typed AST. Same app, same
+		// body(): what changes is who reads it, and when.
+		if (Context.defined("aui_dynamic")) {
+			lines.push("        // -D aui_dynamic: hand the app to the Haxe-side tree reader,");
+			lines.push("        // which DynamicRoot() walks through nui's pull contract.");
+			lines.push("        aui.runtime.ViewNodeBridge.setApp(app)");
+			lines.push("        setContent {");
+			lines.push("            MaterialTheme {");
+			lines.push("                Surface {");
+			lines.push("                    aui.runtime.DynamicRoot()");
+			lines.push("                }");
+			lines.push("            }");
+			lines.push("        }");
+		} else {
+			lines.push("        setContent {");
+			lines.push("            MaterialTheme {");
+			lines.push("                Surface {");
+			lines.push("                    MainScreen(app)");
+			lines.push("                }");
+			lines.push("            }");
+			lines.push("        }");
+		}
+
+		lines.push("    }");
+		lines.push("}");
+		lines.push("");
 		File.saveContent(_outputDir + "/MainActivity.kt", lines.join("\n"));
 	}
 
@@ -1784,6 +1809,29 @@ class ComposeGenerator {
 			copyIfNewer(stateBridge, stateDir + "/StateBridge.kt");
 		} else {
 			Context.warning('[AUI] StateBridge.kt not found in aui/runtime/ — state bridge will be missing', Context.currentPos());
+		}
+
+		// The dynamic renderer, only when asked for. It is Kotlin in package
+		// `aui.runtime` -- the same package as the Haxe ViewNodeBridge it calls,
+		// so the class loader pairs them with no import and no JNI.
+		var runtimeDir = "android/app/src/main/kotlin/aui/runtime";
+		var rendererOut = runtimeDir + "/DynamicComposable.kt";
+
+		if (Context.defined("aui_dynamic")) {
+			ensureDir(runtimeDir);
+			var renderer = locateAuiRuntimeFile("DynamicComposable.kt");
+			if (renderer != null) {
+				copyIfNewer(renderer, rendererOut);
+			} else {
+				Context.warning('[AUI] DynamicComposable.kt not found in aui/runtime/ — -D aui_dynamic will not link', Context.currentPos());
+			}
+		} else if (FileSystem.exists(rendererOut)) {
+			// Left over from a dynamic build. The Haxe half it calls
+			// (aui.runtime.ViewNodeBridge) is only pulled into the jar under
+			// -D aui_dynamic, so leaving this file behind breaks the *static*
+			// build with "Unresolved reference: ViewNodeBridge" -- a failure in
+			// a mode the developer did not even ask for.
+			FileSystem.deleteFile(rendererOut);
 		}
 
 		// Android IO helpers (assets + symlinks). Always emitted: cheap, and

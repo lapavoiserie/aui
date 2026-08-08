@@ -13,3 +13,5 @@ build/
 **/android/gradlew
 **/android/gradlew.bat
 **/android/local.properties
+test/nui-check.jar
+test/stubs-classes/
