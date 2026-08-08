@@ -11,7 +11,7 @@
 set -u
 cd "$(dirname "$0")/.."
 
-echo "aui — moitie Haxe du renderer dynamique"
+echo "aui — Haxe half of the dynamic renderer"
 
 # A JVM stand-in for the Compose-backed state bridge.
 javac -d test/stubs-classes test/stubs/aui/state/StateBridge.java || exit 1
@@ -23,7 +23,7 @@ haxe -cp src -cp test -lib rui -lib nui -D jvm --jvm test/nui-check.jar -main Nu
 java -cp "test/nui-check.jar:test/stubs-classes" haxe.root.NuiCheck || exit 1
 
 echo ""
-echo "aui — couverture du renderer dynamique"
+echo "aui — dynamic renderer coverage"
 
 # A view the dynamic renderer cannot draw must be refused at COMPILE time, not
 # drawn as `?Type` at runtime. The placeholder is the right answer only for a
@@ -46,13 +46,13 @@ cover() {
 	rm -rf "$work"
 
 	if [ "$expect" = "pass" ]; then
-		[ $code -eq 0 ] && echo "  ok   $fixture compile" || { echo "  FAIL $fixture aurait du compiler"; echo "$out" | sed 's/^/         /'; return 1; }
+		[ $code -eq 0 ] && echo "  ok   $fixture compile" || { echo "  FAIL $fixture should have compiled"; echo "$out" | sed 's/^/         /'; return 1; }
 	elif [ $code -eq 0 ]; then
-		echo "  FAIL $fixture aurait du etre refuse"; return 1
+		echo "  FAIL $fixture should have been refused"; return 1
 	elif ! echo "$out" | grep -q "\"$type\""; then
-		echo "  FAIL $fixture refuse sans nommer \"$type\""; echo "$out" | sed 's/^/         /'; return 1
+		echo "  FAIL $fixture refused without naming \"$type\""; echo "$out" | sed 's/^/         /'; return 1
 	else
-		echo "  ok   $fixture refuse en nommant \"$type\""
+		echo "  ok   $fixture refused, naming \"$type\""
 	fi
 }
 
@@ -61,6 +61,6 @@ failures=0
 cover Couvert    pass              || failures=1
 cover NonCouvert reject Image      || failures=1
 
-[ $failures -eq 0 ] || { echo ""; echo "couverture: echec"; exit 1; }
+[ $failures -eq 0 ] || { echo ""; echo "coverage: failed"; exit 1; }
 echo ""
 echo "all good"

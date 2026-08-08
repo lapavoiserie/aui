@@ -5,11 +5,11 @@ import aui.ui.Text;
 import aui.ui.VStack;
 
 /**
-	Utilise un type que le renderer dynamique ne dessine pas.
+	Uses a type the dynamic renderer does not draw.
 
-	L'`Image` est dans une **méthode auxiliaire**, pas dans `body()` : un
-	`taskItem(...)` est du rendu autant que `body()`, et ne pas l'y suivre
-	laisserait passer précisément ce que les vraies apps écrivent.
+	The `Image` sits in a **helper method**, not in `body()`: a `taskItem(...)`
+	is as much rendering as `body()` is, and not following the check into those
+	would let through exactly what real apps write.
 **/
 class NonCouvert extends App {
 	public function new() {
@@ -25,6 +25,6 @@ class NonCouvert extends App {
 	}
 
 	override public function body():View {
-		return new VStack(null, null, [new Text("saisie"), illustration()]);
+		return new VStack(null, null, [new Text("input"), illustration()]);
 	}
 }

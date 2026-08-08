@@ -39,12 +39,12 @@ class NuiCheck {
 	}
 
 	static function main() {
-		Sys.println("aui — contrat pull de nui");
+		Sys.println("aui — nui pull contract");
 
 		var count = new State<Int>(0, "count");
 		var flag = new State<Bool>(false, "flag");
 
-		var text = new Text("compteur");
+		var text = new Text("counter");
 		var plus = new Button("Plus", Increment(count));
 		var toggle = new Button("Bascule", Toggle(flag));
 		var mute = new Button("Sans action");
@@ -53,82 +53,82 @@ class NuiCheck {
 		var src = new ViewSource(root);
 
 		// --- the walk ---
-		check("le type est le nom nu", src.typeOf(root) == "VStack", src.typeOf(root));
-		check("les enfants sont comptés", src.childCount(root) == 4, Std.string(src.childCount(root)));
-		check("un enfant est atteint", src.typeOf(src.childAt(root, 1)) == "Button");
+		check("the type is the bare name", src.typeOf(root) == "VStack", src.typeOf(root));
+		check("children are counted", src.childCount(root) == 4, Std.string(src.childCount(root)));
+		check("a child is reachable", src.typeOf(src.childAt(root, 1)) == "Button");
 
 		// --- the fields read reflectively ---
 		//
 		// These are the ones a compiler cannot check: they are read by name.
-		check("le texte d'un Text est lu", ViewNodeBridge.getText(text) == "compteur",
+		check("a Text's content is read", ViewNodeBridge.getText(text) == "counter",
 			ViewNodeBridge.getText(text));
-		check("le libellé d'un Button est lu", ViewNodeBridge.getButtonLabel(plus) == "Plus",
+		check("a Button's label is read", ViewNodeBridge.getButtonLabel(plus) == "Plus",
 			ViewNodeBridge.getButtonLabel(plus));
 
 		// --- actions ---
-		check("un bouton avec action a un id", src.actionId(plus) >= 0, Std.string(src.actionId(plus)));
-		check("un bouton sans action n'en a pas", src.actionId(mute) < 0, Std.string(src.actionId(mute)));
-		check("un id est stable", src.actionId(plus) == src.actionId(plus));
-		check("deux boutons ont des ids distincts", src.actionId(plus) != src.actionId(toggle));
+		check("a button with an action has an id", src.actionId(plus) >= 0, Std.string(src.actionId(plus)));
+		check("a button without one has none", src.actionId(mute) < 0, Std.string(src.actionId(mute)));
+		check("an id is stable", src.actionId(plus) == src.actionId(plus));
+		check("two buttons get distinct ids", src.actionId(plus) != src.actionId(toggle));
 
 		// The heart of it: aui's actions are a declarative enum the static
 		// generator translates to Kotlin. At runtime that translation does not
 		// exist, so the source has to apply the enum itself.
 		src.invokeAction(plus);
-		check("Increment écrit dans l'état", count.get() == 1, Std.string(count.get()));
+		check("Increment writes to the state", count.get() == 1, Std.string(count.get()));
 		src.invokeAction(plus);
-		check("Increment est cumulatif", count.get() == 2, Std.string(count.get()));
+		check("Increment accumulates", count.get() == 2, Std.string(count.get()));
 
 		src.invokeAction(toggle);
-		check("Toggle inverse l'état", flag.get() == true, Std.string(flag.get()));
+		check("Toggle flips the state", flag.get() == true, Std.string(flag.get()));
 
 		src.invokeAction(mute);
-		check("un bouton sans action ne casse rien", true);
+		check("a button without an action breaks nothing", true);
 
 		// Through the id, which is what a foreign consumer holds.
 		src.invokeActionId(src.actionId(plus));
-		check("invoquer par id fait la même chose", count.get() == 3, Std.string(count.get()));
+		check("invoking by id does the same", count.get() == 3, Std.string(count.get()));
 		src.invokeActionId(-1);
 		src.invokeActionId(999);
-		check("un id hors bornes n'exécute rien", count.get() == 3);
+		check("an out-of-range id runs nothing", count.get() == 3);
 
 		// SetValue / Decrement / Append, and the animated wrapper, which changes
 		// how a change is shown -- never what is written.
 		var direct = new Button("Fixe", SetValue(count, 40));
 		new ViewSource(direct).invokeAction(direct);
-		check("SetValue écrit la valeur", count.get() == 40, Std.string(count.get()));
+		check("SetValue writes the value", count.get() == 40, Std.string(count.get()));
 
-		var moins = new Button("Moins", Decrement(count, 8));
-		new ViewSource(moins).invokeAction(moins);
-		check("Decrement retire le montant donné", count.get() == 32, Std.string(count.get()));
+		var minus = new Button("Moins", Decrement(count, 8));
+		new ViewSource(minus).invokeAction(minus);
+		check("Decrement subtracts the given amount", count.get() == 32, Std.string(count.get()));
 
-		var anim = new Button("Animé", Animated(Increment(count), Default));
-		new ViewSource(anim).invokeAction(anim);
-		check("Animated applique l'action intérieure", count.get() == 33, Std.string(count.get()));
+		var animated = new Button("Animé", Animated(Increment(count), Default));
+		new ViewSource(animated).invokeAction(animated);
+		check("Animated applies the inner action", count.get() == 33, Std.string(count.get()));
 
-		var mot = new State<String>("a", "mot");
-		var ajout = new Button("Ajoute", Append(mot, "b"));
-		new ViewSource(ajout).invokeAction(ajout);
-		check("Append concatène", mot.get() == "ab", mot.get());
+		var word = new State<String>("a", "word");
+		var appender = new Button("Ajoute", Append(word, "b"));
+		new ViewSource(appender).invokeAction(appender);
+		check("Append concatenates", word.get() == "ab", word.get());
 
 		// --- the optional modifier parameter ---
 		//
 		// `Padding()` means the default 16dp and `Padding(0)` means none, but
 		// modifierFloat answers 0.0 to both. This is the difference the pull
 		// contract cannot express, so aui's bridge answers it separately.
-		var parDefaut = new Text("d");
-		parDefaut.padding();
-		var explicite = new Text("e");
-		explicite.padding(0);
+		var byDefault = new Text("d");
+		byDefault.padding();
+		var explicit = new Text("e");
+		explicit.padding(0);
 
-		var sd = new ViewSource(parDefaut);
-		var se = new ViewSource(explicite);
-		check("un padding par défaut est vu comme absent",
-			sd.modifierType(parDefaut, 0) == "Padding" && !sd.modifierHasParam(parDefaut, 0, 0));
-		check("un padding explicite de 0 est vu comme présent",
-			se.modifierType(explicite, 0) == "Padding" && se.modifierHasParam(explicite, 0, 0));
-		check("les deux donnent pourtant la même valeur",
-			sd.modifierFloat(parDefaut, 0, 0) == 0.0 && se.modifierFloat(explicite, 0, 0) == 0.0);
+		var sd = new ViewSource(byDefault);
+		var se = new ViewSource(explicit);
+		check("a default padding reads as absent",
+			sd.modifierType(byDefault, 0) == "Padding" && !sd.modifierHasParam(byDefault, 0, 0));
+		check("an explicit padding of 0 reads as present",
+			se.modifierType(explicit, 0) == "Padding" && se.modifierHasParam(explicit, 0, 0));
+		check("yet both answer the same value",
+			sd.modifierFloat(byDefault, 0, 0) == 0.0 && se.modifierFloat(explicit, 0, 0) == 0.0);
 
 		// --- state templates ---
 		//
@@ -136,27 +136,27 @@ class NuiCheck {
 		// into Kotlin. There is no Kotlin at runtime, so the bridge resolves the
 		// names against the state registry. Without this the counter example
 		// renders an empty string forever -- which reads as a renderer bug.
-		var gabarit = aui.ui.Text.withState("compte : {count}");
-		check("un gabarit est résolu à l'exécution",
-			ViewNodeBridge.getText(gabarit) == "compte : 33", ViewNodeBridge.getText(gabarit));
+		var template = aui.ui.Text.withState("count: {count}");
+		check("a template is resolved at runtime",
+			ViewNodeBridge.getText(template) == "count: 33", ViewNodeBridge.getText(template));
 
-		var deux = aui.ui.Text.withState("{count}/{mot}");
-		check("plusieurs noms dans un gabarit",
-			ViewNodeBridge.getText(deux) == "33/ab", ViewNodeBridge.getText(deux));
+		var twoNames = aui.ui.Text.withState("{count}/{word}");
+		check("several names in one template",
+			ViewNodeBridge.getText(twoNames) == "33/ab", ViewNodeBridge.getText(twoNames));
 
 		// An unknown name stays as written: `{cont}` on screen says the name is
 		// wrong, an empty string says nothing at all.
-		var faute = aui.ui.Text.withState("x{cont}y");
-		check("un nom inconnu reste visible",
-			ViewNodeBridge.getText(faute) == "x{cont}y", ViewNodeBridge.getText(faute));
+		var wrongName = aui.ui.Text.withState("x{cont}y");
+		check("an unknown name stays visible",
+			ViewNodeBridge.getText(wrongName) == "x{cont}y", ViewNodeBridge.getText(wrongName));
 
-		var brut = aui.ui.Text.withState("sans accolade");
-		check("un gabarit sans nom passe tel quel",
-			ViewNodeBridge.getText(brut) == "sans accolade", ViewNodeBridge.getText(brut));
+		var plain = aui.ui.Text.withState("sans accolade");
+		check("a template with no name passes through",
+			ViewNodeBridge.getText(plain) == "sans accolade", ViewNodeBridge.getText(plain));
 
-		var boiteux = aui.ui.Text.withState("ouvert {count");
-		check("une accolade non fermée ne boucle pas",
-			ViewNodeBridge.getText(boiteux) == "ouvert {count", ViewNodeBridge.getText(boiteux));
+		var unclosed = aui.ui.Text.withState("ouvert {count");
+		check("an unclosed brace does not loop",
+			ViewNodeBridge.getText(unclosed) == "ouvert {count", ViewNodeBridge.getText(unclosed));
 
 		// --- views whose sub-views live outside `children` ---
 		//
@@ -164,78 +164,78 @@ class NuiCheck {
 		// followed `childAt`, found nothing, and drew nothing. Reporting zero
 		// children for a TabView is a lie to the pull contract, not a Compose
 		// detail.
-		var onglets = new aui.ui.TabView([
-			new aui.ui.Tab("Tâches", "list", new Text("liste")),
+		var tabs = new aui.ui.TabView([
+			new aui.ui.Tab("Tasks", "list", new Text("liste")),
 			new aui.ui.Tab("Notes", "edit", new Text("notes"))
 		]);
-		var so = new ViewSource(onglets);
-		check("un TabView compte ses onglets", so.childCount(onglets) == 2,
-			Std.string(so.childCount(onglets)));
-		check("un enfant de TabView est le contenu de l'onglet",
-			ViewNodeBridge.getText(so.childAt(onglets, 1)) == "notes");
-		check("les titres sont lisibles", so.tabTitle(onglets, 0) == "Tâches", so.tabTitle(onglets, 0));
-		check("un index d'onglet hors bornes ne jette pas",
-			so.childAt(onglets, 9) == null && so.tabTitle(onglets, 9) == "");
+		var so = new ViewSource(tabs);
+		check("a TabView counts its tabs", so.childCount(tabs) == 2,
+			Std.string(so.childCount(tabs)));
+		check("a TabView child is the tab's content",
+			ViewNodeBridge.getText(so.childAt(tabs, 1)) == "notes");
+		check("tab titles are readable", so.tabTitle(tabs, 0) == "Tasks", so.tabTitle(tabs, 0));
+		check("an out-of-range tab index does not throw",
+			so.childAt(tabs, 9) == null && so.tabTitle(tabs, 9) == "");
 
-		var drapeau = new State<Bool>(true, "drapeau");
-		var cond = new aui.ui.ConditionalView(drapeau, new Text("oui"), new Text("non"));
+		var flag = new State<Bool>(true, "flag");
+		var cond = new aui.ui.ConditionalView(flag, new Text("oui"), new Text("non"));
 		var sc = new ViewSource(cond);
-		check("un ConditionalView expose ses deux branches", sc.childCount(cond) == 2);
-		check("la condition est lue à l'instant demandé", sc.conditionValue(cond) == true);
-		drapeau.set(false);
-		check("et suit l'état, pas l'arbre", sc.conditionValue(cond) == false);
+		check("a ConditionalView exposes both branches", sc.childCount(cond) == 2);
+		check("the condition is read when asked", sc.conditionValue(cond) == true);
+		flag.set(false);
+		check("and follows the state, not the tree", sc.conditionValue(cond) == false);
 
-		var sansSinon = new aui.ui.ConditionalView(drapeau, new Text("oui"));
-		check("sans branche else, un seul enfant",
-			new ViewSource(sansSinon).childCount(sansSinon) == 1);
+		var noElse = new aui.ui.ConditionalView(flag, new Text("oui"));
+		check("with no else branch, a single child",
+			new ViewSource(noElse).childCount(noElse) == 1);
 
-		var section = new aui.ui.Section("Travail", [new Text("a"), new Text("b")]);
-		check("une Section garde ses enfants", new ViewSource(section).childCount(section) == 2);
-		check("et expose son en-tête", ViewNodeBridge.sectionHeader(section) == "Travail");
+		var section = new aui.ui.Section("Work", [new Text("a"), new Text("b")]);
+		check("a Section keeps its children", new ViewSource(section).childCount(section) == 2);
+		check("and exposes its header", ViewNodeBridge.sectionHeader(section) == "Work");
 
 		// --- the writes: the one direction the pull contract does not describe ---
-		var saisie = new State<String>("", "saisie");
-		var champ = new aui.ui.TextField("Écrire…", saisie);
-		check("le placeholder est lu", ViewNodeBridge.fieldPlaceholder(champ) == "Écrire…");
-		ViewNodeBridge.setFieldText(champ, "bonjour");
-		check("écrire dans un champ atteint l'état", saisie.get() == "bonjour", saisie.get());
-		check("et se relit par le pont", ViewNodeBridge.fieldText(champ) == "bonjour");
+		var entry = new State<String>("", "entry");
+		var field = new aui.ui.TextField("Type here…", entry);
+		check("the placeholder is read", ViewNodeBridge.fieldPlaceholder(field) == "Type here…");
+		ViewNodeBridge.setFieldText(field, "bonjour");
+		check("writing a field reaches the state", entry.get() == "bonjour", entry.get());
+		check("and reads back through the bridge", ViewNodeBridge.fieldText(field) == "bonjour");
 
 		var actif = new State<Bool>(false, "actif");
-		var bascule = new aui.ui.Toggle("Notifications", actif);
-		ViewNodeBridge.setToggleValue(bascule, true);
-		check("basculer atteint l'état", actif.get() == true);
-		check("et se relit par le pont", ViewNodeBridge.toggleValue(bascule) == true);
+		var toggleView = new aui.ui.Toggle("Notifications", actif);
+		ViewNodeBridge.setToggleValue(toggleView, true);
+		check("toggling reaches the state", actif.get() == true);
+		check("and reads back through the bridge", ViewNodeBridge.toggleValue(toggleView) == true);
 
 		// Built without a state: the view is legal, so reading and writing it
 		// must be survivable rather than throwing on a null cell.
-		var orphelin = new aui.ui.Toggle("Sans état");
-		ViewNodeBridge.setToggleValue(orphelin, true);
-		check("une bascule sans état ne jette pas",
-			ViewNodeBridge.toggleValue(orphelin) == false);
+		var stateless = new aui.ui.Toggle("Sans état");
+		ViewNodeBridge.setToggleValue(stateless, true);
+		check("a toggle with no state does not throw",
+			ViewNodeBridge.toggleValue(stateless) == false);
 
 		// --- what the bridge answers before setApp() ---
 		//
 		// Kotlin composes before the app is handed over, for at least one frame.
-		check("le pont répond avant setApp()", ViewNodeBridge.getRoot() == null);
-		check("et ne jette pas en lisant un noeud nul",
+		check("the bridge answers before setApp()", ViewNodeBridge.getRoot() == null);
+		check("and does not throw on a null node",
 			ViewNodeBridge.getType(null) == "" && ViewNodeBridge.childCount(null) == 0);
 
 		// --- the tree the bridge hands to Kotlin ---
 		ViewNodeBridge.setApp(new DemoApp());
 		var handed = ViewNodeBridge.getRoot();
-		check("setApp() construit un arbre", handed != null);
-		check("le pont décrit cet arbre", ViewNodeBridge.getType(handed) == "VStack",
+		check("setApp() builds a tree", handed != null);
+		check("the bridge describes that tree", ViewNodeBridge.getType(handed) == "VStack",
 			ViewNodeBridge.getType(handed));
 
 		// A rebuild re-runs body(): this is what makes a write visible, since
 		// the tree holds values read when body() ran.
 		var before = ViewNodeBridge.getText(ViewNodeBridge.getChild(handed, 0));
-		DemoApp.compteur.set(7);
+		DemoApp.counter.set(7);
 		ViewNodeBridge.rebuild();
 		var after = ViewNodeBridge.getText(ViewNodeBridge.getChild(ViewNodeBridge.getRoot(), 0));
-		check("rebuild() rend l'écriture visible", before != after, '"$before" -> "$after"');
-		check("et rend la nouvelle valeur", after == "compteur : 7", after);
+		check("rebuild() makes the write visible", before != after, '"$before" -> "$after"');
+		check("and renders the new value", after == "counter: 7", after);
 
 		Sys.println(failures == 0 ? "\nall good" : '\n$failures failed');
 		Sys.exit(failures == 0 ? 0 : 1);
@@ -244,7 +244,7 @@ class NuiCheck {
 
 /** The smallest thing that is an app: a body() built from an observable. **/
 class DemoApp extends aui.App {
-	public static var compteur = new State<Int>(0, "compteur");
+	public static var counter = new State<Int>(0, "counter");
 
 	public function new() {
 		super();
@@ -252,8 +252,8 @@ class DemoApp extends aui.App {
 
 	override public function body():View {
 		return new VStack(null, null, [
-			new Text("compteur : " + compteur.get()),
-			new Button("Plus", Increment(compteur))
+			new Text("counter: " + counter.get()),
+			new Button("Plus", Increment(counter))
 		]);
 	}
 }

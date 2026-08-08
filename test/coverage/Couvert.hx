@@ -4,7 +4,7 @@ import aui.ui.Button;
 import aui.ui.Text;
 import aui.ui.VStack;
 
-/** N'utilise que des types que le renderer dynamique sait dessiner. **/
+/** Uses only types the dynamic renderer knows how to draw. **/
 class Couvert extends App {
 	@:state var n:Int = 0;
 
@@ -18,7 +18,7 @@ class Couvert extends App {
 
 	override public function body():View {
 		return new VStack(null, null, [
-			new Text("compte : " + n),
+			new Text("count: " + n),
 			new Button("+", n.inc())
 		]);
 	}
