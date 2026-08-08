@@ -55,6 +55,11 @@ class ComposeGenerator {
 			Context.getModule("aui.runtime.ViewNodeBridge");
 		}
 
+		// Under -D aui_dynamic, refuse a view the dynamic renderer cannot draw.
+		if (Context.defined("aui_dynamic")) {
+			Context.onAfterTyping(checkDynamicCoverage);
+		}
+
 		Context.onAfterTyping(function(modules:Array<ModuleType>) {
 			for (module in modules) {
 				switch (module) {
@@ -1866,7 +1871,10 @@ class ComposeGenerator {
 	// Context.resolvePath on a known Haxe source file to anchor the lookup.
 	static function locateAuiRuntimeFile(name:String):Null<String> {
 		try {
-			var anchor = Context.resolvePath("aui/state/State.hx"); // aui/src/aui/state/State.hx
+			// Absolute, or walking up four levels from a relative classpath
+			// (`-cp src`) runs out of path and lands on "/runtime/..." -- which
+			// simply does not exist, so the runtime looked absent.
+			var anchor = FileSystem.absolutePath(Context.resolvePath("aui/state/State.hx"));
 			// Walk up: src/aui/state/State.hx → src/aui/state → src/aui → src → aui-root
 			var dir = haxe.io.Path.directory(anchor); // .../aui/state
 			dir = haxe.io.Path.directory(dir); // .../aui
@@ -2026,6 +2034,156 @@ class ComposeGenerator {
 				if (!FileSystem.exists(current)) FileSystem.createDirectory(current);
 			}
 		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Dynamic renderer coverage
+	// -------------------------------------------------------------------------
+
+	/**
+		Refuse, at compile time, a view the dynamic renderer cannot draw.
+
+		`?TabView` on screen was the wrong answer. It is the right one for a tree
+		that arrives as **data** -- an interface streamed from a live source,
+		which nothing can check ahead of time -- and that is the same boundary
+		`wui` draws with `Foreign.node`. But a `body()` written here, compiled
+		for a known renderer, can be judged now. Treating a knowable defect as
+		unknowable is how a blank screen reaches a developer.
+
+		The covered types are **read from the renderer itself**. Keeping a list
+		here would be a second copy of the same knowledge -- the mistake this
+		ecosystem pays for over and over -- and it would drift in the direction
+		that hurts: a type dropped from the Kotlin would still pass the check.
+	**/
+	static function checkDynamicCoverage(types:Array<ModuleType>):Void {
+		var covered = coveredViewTypes();
+		if (covered == null) return; // already reported
+
+		var offenders:Array<{name:String, pos:haxe.macro.Expr.Position}> = [];
+
+		for (mt in types) {
+			switch (mt) {
+				case TClassDecl(ref):
+					var cls = ref.get();
+					if (!isAppSubclass(cls)) continue;
+					for (field in cls.fields.get()) collectViews(field, covered, offenders);
+					for (field in cls.statics.get()) collectViews(field, covered, offenders);
+				default:
+			}
+		}
+
+		if (offenders.length == 0) return;
+
+		var known = [for (k in covered.keys()) k];
+		known.sort(Reflect.compare);
+
+		for (i in 0...offenders.length) {
+			var o = offenders[i];
+			var msg = 'Le renderer dynamique ne sait pas rendre "' + o.name + '".\n'
+				+ '  Types couverts : ' + known.join(", ") + '.\n'
+				+ '  Ajoutez-le au when() de aui/runtime/DynamicComposable.kt, ou\n'
+				+ '  compilez sans -D aui_dynamic pour le chemin statique.';
+			if (i == offenders.length - 1) Context.error(msg, o.pos);
+			else Context.reportError(msg, o.pos);
+		}
+	}
+
+	/**
+		The types the Kotlin renderer switches on, read from its source.
+
+		Deliberately parsed rather than re-declared: the `when` in `DynamicView`
+		*is* the vocabulary, so anything else is a copy. Returns `null` after
+		reporting, so a renderer that cannot be read stops the build instead of
+		silently approving every type -- an absence must not read as approval.
+	**/
+	static function coveredViewTypes():Null<Map<String, Bool>> {
+		var path = locateAuiRuntimeFile("DynamicComposable.kt");
+		if (path == null) {
+			Context.error('[AUI] DynamicComposable.kt introuvable : impossible de verifier ce que le renderer dynamique couvre.', Context.currentPos());
+			return null;
+		}
+
+		// Only `DynamicView`'s when(): `applyModifiers` has one too, and its
+		// branches are modifier names -- reading both would answer "Padding is a
+		// view type", which is worse than not checking.
+		var source = File.getContent(path);
+		var from = source.indexOf("fun DynamicView(");
+		var to = source.indexOf("fun applyModifiers(");
+		if (from < 0 || to < 0 || to < from) {
+			Context.error('[AUI] DynamicComposable.kt ne presente pas la forme attendue (DynamicView puis applyModifiers) : la verification ne peut rien affirmer.', Context.currentPos());
+			return null;
+		}
+
+		var out = new Map<String, Bool>();
+		var branch = ~/^\s*"([A-Za-z0-9_]+)"\s*->/;
+		for (line in source.substring(from, to).split("\n")) {
+			if (branch.match(line)) out.set(branch.matched(1), true);
+		}
+
+		if (!out.keys().hasNext()) {
+			Context.error('[AUI] Aucun type reconnu dans le when() de DynamicComposable.kt : la verification ne peut rien affirmer.', Context.currentPos());
+			return null;
+		}
+		return out;
+	}
+
+	static function isAppSubclass(cls:ClassType):Bool {
+		var current = cls.superClass == null ? null : cls.superClass.t.get();
+		while (current != null) {
+			if (current.name == "App" && current.pack.join(".") == "aui") return true;
+			current = current.superClass == null ? null : current.superClass.t.get();
+		}
+		return false;
+	}
+
+	/**
+		Collect `new aui.ui.X(...)` from a field that builds views.
+
+		`body()` and the helpers it calls -- any method of the app returning a
+		`View`, which is what `taskItem(...)` is -- and no others: a view built
+		somewhere that never reaches the screen is not this check's business.
+	**/
+	static function collectViews(field:ClassField, covered:Map<String, Bool>,
+			offenders:Array<{name:String, pos:haxe.macro.Expr.Position}>):Void {
+		if (field.name != "body" && !buildsViews(field)) return;
+		var e = field.expr();
+		if (e != null) walkForViews(e, covered, offenders);
+	}
+
+	static function buildsViews(field:ClassField):Bool {
+		return switch (haxe.macro.TypeTools.follow(field.type)) {
+			case TFun(_, ret): isViewType(ret);
+			case _: false;
+		};
+	}
+
+	static function isViewType(t:haxe.macro.Type):Bool {
+		return switch (haxe.macro.TypeTools.follow(t)) {
+			case TInst(ref, _):
+				var cls = ref.get();
+				while (cls != null) {
+					if (cls.name == "View" && cls.pack.join(".") == "aui") return true;
+					cls = cls.superClass == null ? null : cls.superClass.t.get();
+				}
+				false;
+			case _: false;
+		};
+	}
+
+	static function walkForViews(e:TypedExpr, covered:Map<String, Bool>,
+			offenders:Array<{name:String, pos:haxe.macro.Expr.Position}>):Void {
+		if (e == null) return;
+
+		switch (e.expr) {
+			case TNew(ref, _, _):
+				var cls = ref.get();
+				if (cls.pack.join(".") == "aui.ui" && !covered.exists(cls.name)) {
+					offenders.push({name: cls.name, pos: e.pos});
+				}
+			default:
+		}
+
+		haxe.macro.TypedExprTools.iter(e, function(sub) walkForViews(sub, covered, offenders));
 	}
 }
 #end

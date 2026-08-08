@@ -182,12 +182,16 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
         else -> {
             // A type this renderer does not know.
             //
-            // Its children are still real views, so they are drawn. But a
-            // container that keeps its content somewhere other than `children`
-            // -- TabView holds Tabs -- would then draw *nothing at all*, and a
-            // blank screen is not a diagnosis. So the type is named on screen,
-            // the way wui and qui name an unrenderable node: seeing `?TabView`
-            // says what is missing, an empty Surface says nothing.
+            // **A view written in the app never reaches here.** ComposeGenerator
+            // refuses to compile it under -D aui_dynamic, naming the type and
+            // the covered set -- a knowable defect belongs at compile time, not
+            // on screen. This branch is for a tree that arrives as **data**,
+            // where nothing could have been checked: the same boundary wui
+            // draws with `Foreign.node`.
+            //
+            // There, naming the type still beats silence -- a container that
+            // keeps its content somewhere other than `children` would otherwise
+            // draw nothing at all, and a blank screen is not a diagnosis.
             Column(modifier = mod) {
                 if (node.childCount > 0) {
                     dynamicChildren(node)
