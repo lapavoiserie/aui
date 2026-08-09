@@ -192,9 +192,15 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             val hasAction = node.actionId >= 0
             Button(
                 onClick = {
-                    // Run the action, then ask for a new generation. The old
-                    // version of this file called rebuild() and never invoked
-                    // anything -- every button redrew the same tree.
+                    // This one stays, and it is worth saying why.
+                    //
+                    // A value read *live* -- a state template, a field, a toggle
+                    // -- refreshes on its own, because Compose tracks the read.
+                    // But a value **frozen** into the node when `body()` ran does
+                    // not: `new Text("count: " + n.get())` computed its string
+                    // once, and nothing will recompute it. A StateAction can
+                    // change either, and can change the tree's *shape*, so the
+                    // rebuild stays here until property reads are live too.
                     if (hasAction) {
                         ViewNodeBridge.invokeAction(handle)
                         DynamicHost.invalidate()
@@ -265,8 +271,14 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
         "TextField" -> OutlinedTextField(
             value = node.fieldText,
             onValueChange = {
+                // No invalidate: `value` above reads the state through Haxe
+                // *during composition*, and Compose's snapshot system records
+                // that read however deep the call stack -- including through
+                // JVM frames Haxe emitted. Writing the state recomposes this
+                // field, and every other view whose value is read the same way.
+                // Proven on a device: a counter advanced 0 -> 1 -> 2 with the
+                // generation counter untouched.
                 node.setFieldText(it)
-                DynamicHost.invalidate()
             },
             placeholder = { Text(node.fieldPlaceholder) },
             singleLine = true,
@@ -281,8 +293,8 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             Switch(
                 checked = node.toggleValue,
                 onCheckedChange = {
+                    // No invalidate -- see the TextField above.
                     node.setToggleValue(it)
-                    DynamicHost.invalidate()
                 }
             )
         }
