@@ -150,7 +150,24 @@ class ComposeGenerator {
 		}
 
 		generateMainActivity(packageName, appName);
-		generateMainScreen(packageName, appType);
+
+		// The static screen is what the transpiler exists for -- and on the
+		// dynamic path nothing uses it: MainActivity calls DynamicRoot(), which
+		// walks the live tree.
+		//
+		// Emitting it anyway was worse than wasteful. LiveProps rewrites the view
+		// expressions before this walk sees them, so what came out was an empty
+		// `Column` -- a screen that would render nothing at all if anyone wired
+		// it. And it is this walk that turns an expression the transpiler cannot
+		// translate into invalid Kotlin, breaking a build that had no use for the
+		// file.
+		var screen = _outputDir + "/MainScreen.kt";
+		if (!Context.defined("aui_dynamic")) {
+			generateMainScreen(packageName, appType);
+		} else if (FileSystem.exists(screen)) {
+			// Left over from a static build: stale, and now misleading.
+			FileSystem.deleteFile(screen);
+		}
 
 		// Emit Kotlin runtime helpers (StateBridge, etc.) alongside the user's
 		// generated Compose files. These are consumed by the Haxe state classes
