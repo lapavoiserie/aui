@@ -962,7 +962,26 @@ class ComposeGenerator {
 					: "Modifier.safeDrawingPadding()";
 				viewCode = generateContainer("Column", args, safeMod, indent);
 			default:
-				viewCode = indent + "// Unknown view: " + fullName + "\n";
+				// A view this generator cannot emit disappears from the screen,
+				// and a comment in a generated file is not a report. Say it where
+				// the developer can act on it.
+				//
+				// A ViewComponent gets its own message: it is not an unknown type
+				// but an unsupported *shape* -- the static path would have to emit
+				// a separate composable carrying the component's own state, which
+				// it does not do. The dynamic renderer expands it and works today.
+				if (StringTools.endsWith(fullName, "ViewComponent") || isComponentName(fullName)) {
+					Context.error('The static path cannot render a ViewComponent ("' + fullName + '").\n'
+						+ '  It would need a composable of its own, carrying the component\'s state.\n'
+						+ '  Build with -D aui_dynamic, which expands components, or inline the\n'
+						+ '  component into a method returning a View (see docs/components.md).',
+						Context.currentPos());
+				}
+				Context.error('The static path cannot render "' + fullName + '".\n'
+					+ '  Only aui\'s own view types are emitted to Kotlin here.\n'
+					+ '  Build with -D aui_dynamic, or compose from types aui provides.',
+					Context.currentPos());
+				viewCode = "";
 		}
 		return prefix + viewCode;
 	}
@@ -2210,6 +2229,18 @@ class ComposeGenerator {
 				false;
 			case _: false;
 		};
+	}
+
+	/** Does this class name denote a ViewComponent subclass? **/
+	static function isComponentName(fullName:String):Bool {
+		try {
+			switch (Context.follow(Context.getType(fullName))) {
+				case TInst(ref, _): return isComponent(ref.get());
+				case _: return false;
+			}
+		} catch (_:Dynamic) {
+			return false;
+		}
 	}
 
 	/** A composition unit, expanded rather than drawn. **/

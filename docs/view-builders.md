@@ -47,3 +47,8 @@ The macro detects that `taskItem()` returns `View`, looks up the method body, bi
 - Parameters referencing state fields must be `State<T>` typed for state actions to resolve
 - Recursive view builders are not supported
 - The function body is re-translated for each call site (true inlining)
+
+## When a builder is not enough
+
+A method is a function of its arguments. When the piece needs **state of its
+own**, it wants a class instead: see [Components](components.md).

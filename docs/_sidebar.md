@@ -20,6 +20,7 @@
 - **Core**
   - [Modifiers](modifiers.md)
   - [View Builders](view-builders.md)
+  - [Components](components.md)
 
 - **Reference**
   - [CLI](cli.md)
