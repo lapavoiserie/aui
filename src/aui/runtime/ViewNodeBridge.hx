@@ -156,7 +156,25 @@ class ViewNodeBridge {
 	// entries in `properties`, so the pull contract has no key for them. Read
 	// here rather than pretended into the contract.
 
+	/**
+		The node to read a *value* from.
+
+		When `LiveProps` deferred a view's values, the node itself carries neutral
+		ones and `liveBuild` holds the real expression. Evaluating it here is the
+		whole point: the state read then happens inside the composable asking for
+		the value, so Compose recomposes that one rather than the whole tree.
+
+		Only for values. Actions, children and bound states stay on the original
+		node -- re-running the constructor would hand back a different closure.
+	**/
+	static function valueOf(node:Dynamic):Dynamic {
+		if (node == null) return null;
+		var view:aui.View = cast node;
+		return view.liveBuild != null ? view.liveBuild() : node;
+	}
+
 	public static function getText(node:Dynamic):String {
+		node = valueOf(node);
 		if (node == null) return "";
 
 		// A state template -- `Text.withState("compteur : {count}")` -- has no
@@ -202,6 +220,7 @@ class ViewNodeBridge {
 	}
 
 	public static function getButtonLabel(node:Dynamic):String {
+		node = valueOf(node);
 		if (node == null) return "";
 		var label:Dynamic = Reflect.field(node, "label");
 		return label != null ? Std.string(label) : "";
@@ -227,6 +246,7 @@ class ViewNodeBridge {
 	}
 
 	public static function fieldPlaceholder(node:Dynamic):String {
+		node = valueOf(node);
 		if (node == null) return "";
 		var p:Dynamic = Reflect.field(node, "placeholder");
 		return p != null ? Std.string(p) : "";
@@ -250,6 +270,7 @@ class ViewNodeBridge {
 	}
 
 	public static function toggleLabel(node:Dynamic):String {
+		node = valueOf(node);
 		if (node == null) return "";
 		var label:Dynamic = Reflect.field(node, "label");
 		return label != null ? Std.string(label) : "";

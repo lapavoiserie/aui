@@ -237,8 +237,56 @@ class NuiCheck {
 		check("rebuild() makes the write visible", before != after, '"$before" -> "$after"');
 		check("and renders the new value", after == "counter: 7", after);
 
+		// --- deferred values: the grain LiveProps buys ---
+		//
+		// Under -D aui_dynamic the macro rewrites a view whose value is computed
+		// from state: the node is built with a neutral value and carries the real
+		// expression in `liveBuild`. That is what puts the state read inside the
+		// composable displaying it rather than the one building the tree -- on a
+		// device, body() replayed 0 times while the screen followed 0 -> 1 -> 2.
+		var live = new LiveApp();
+		var tree = live.body();
+		var leaf = tree.children[0];
+
+		check("a computed value is deferred", leaf.liveBuild != null);
+		check("the built node does not carry the value",
+			ViewNodeBridge.getText(leaf) != "", "empty");
+		check("the value read is the real one", ViewNodeBridge.getText(leaf) == "n = 5",
+			ViewNodeBridge.getText(leaf));
+
+		// The point of the whole exercise: no rebuild, and the read follows.
+		LiveApp.compte.set(9);
+		check("a write changes the read with no tree rebuild",
+			ViewNodeBridge.getText(leaf) == "n = 9", ViewNodeBridge.getText(leaf));
+
+		check("a constant value is not deferred", tree.children[1].liveBuild == null);
+		check("a container is never deferred", tree.liveBuild == null);
+
 		Sys.println(failures == 0 ? "\nall good" : '\n$failures failed');
 		Sys.exit(failures == 0 ? 0 : 1);
+	}
+}
+
+/**
+	An app whose text is computed from state.
+
+	`LiveProps` should defer it: `new Text("n = " + compte.get())` must not read
+	the state while the tree is built. The constant beside it must be left alone,
+	and the VStack holding them must never be deferred -- re-running a container's
+	constructor would rebuild its children.
+**/
+class LiveApp extends aui.App {
+	public static var compte = new State<Int>(5, "compte");
+
+	public function new() {
+		super();
+	}
+
+	override public function body():View {
+		return new VStack(null, null, [
+			new Text("n = " + compte.get()),
+			new Text("constante")
+		]);
 	}
 }
 

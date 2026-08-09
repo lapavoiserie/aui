@@ -16,7 +16,10 @@ echo "aui — Haxe half of the dynamic renderer"
 # A JVM stand-in for the Compose-backed state bridge.
 javac -d test/stubs-classes test/stubs/aui/state/StateBridge.java || exit 1
 
-haxe -cp src -cp test -lib rui -lib nui -D jvm --jvm test/nui-check.jar -main NuiCheck || exit 1
+# -D aui_dynamic so LiveProps runs: the deferral it performs is one of the
+# things under test, and without the define the checks would pass by describing
+# a build nobody ships.
+haxe -cp src -cp test -lib rui -lib nui -D aui_dynamic -D jvm --jvm test/nui-check.jar -main NuiCheck || exit 1
 
 # Haxe puts root-package classes under `haxe.root` on the JVM; the manifest
 # names the real entry point, so run the jar rather than guessing the class.

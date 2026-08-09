@@ -143,30 +143,41 @@ class ViewSource implements NodeSource<View> {
 		return st == null ? false : st.get() == true;
 	}
 
+	/** See `ViewNodeBridge.valueOf`: values come from the thunk when there is one. **/
+	static function valueOf(n:View):View {
+		if (n == null) return null;
+		return n.liveBuild != null ? cast n.liveBuild() : n;
+	}
+
 	public function hasProp(n:View, key:String):Bool {
+		n = valueOf(n);
 		if (n == null || n.properties == null) return false;
 		return n.properties.exists(key);
 	}
 
 	public function stringProp(n:View, key:String):String {
+		n = valueOf(n);
 		if (n == null || n.properties == null) return "";
 		var val:Dynamic = n.properties.get(key);
 		return val != null ? Std.string(val) : "";
 	}
 
 	public function intProp(n:View, key:String):Int {
+		n = valueOf(n);
 		if (n == null || n.properties == null) return 0;
 		var val:Dynamic = n.properties.get(key);
 		return val != null ? cast(val, Int) : 0;
 	}
 
 	public function floatProp(n:View, key:String):Float {
+		n = valueOf(n);
 		if (n == null || n.properties == null) return 0.0;
 		var val:Dynamic = n.properties.get(key);
 		return val != null ? cast(val, Float) : 0.0;
 	}
 
 	public function boolProp(n:View, key:String):Bool {
+		n = valueOf(n);
 		if (n == null || n.properties == null) return false;
 		var val:Dynamic = n.properties.get(key);
 		return val != null ? cast(val, Bool) : false;
