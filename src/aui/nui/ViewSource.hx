@@ -47,6 +47,7 @@ class ViewSource implements NodeSource<View> {
 	public function rebuild():Void {}
 
 	public function typeOf(n:View):String {
+		n = resolve(n);
 		if (n == null) return "";
 		var vt = n.viewType;
 		if (vt == null) return "";
@@ -81,6 +82,7 @@ class ViewSource implements NodeSource<View> {
 		source is for. Any consumer benefits, not just Compose.
 	**/
 	public function childCount(n:View):Int {
+		n = resolve(n);
 		if (n == null) return 0;
 
 		var tabs = tabsOf(n);
@@ -94,6 +96,7 @@ class ViewSource implements NodeSource<View> {
 	}
 
 	public function childAt(n:View, index:Int):View {
+		n = resolve(n);
 		if (n == null || index < 0) return null;
 
 		var tabs = tabsOf(n);
@@ -138,15 +141,47 @@ class ViewSource implements NodeSource<View> {
 		asked rather than at the moment the tree was built.
 	**/
 	public function conditionValue(n:View):Bool {
+		n = resolve(n);
 		if (n == null) return false;
 		var st:Dynamic = Reflect.field(n, "conditionState");
 		return st == null ? false : st.get() == true;
 	}
 
-	/** See `ViewNodeBridge.valueOf`: values come from the thunk when there is one. **/
-	static function valueOf(n:View):View {
+	/**
+		A component is described by what it renders, never by itself.
+
+		`ViewComponent` is a composition unit: it has no rendering of its own, so
+		a consumer walking the tree would otherwise meet a node type no renderer
+		knows. Resolving it here means every consumer of the pull contract sees
+		the same thing -- the views the component is made of.
+	**/
+	static function resolve(n:View):View {
+		var current = n;
+		while (Std.isOfType(current, aui.ViewComponent)) {
+			var comp:aui.ViewComponent = cast current;
+			var inner = comp.expand();
+			if (inner == null || inner == current) return current;
+			current = inner;
+		}
+		return current;
+	}
+
+	/**
+		The node to read a *value* from: a component expanded, then its thunk.
+
+		Public and static because the bridge needs exactly this, and two helpers
+		answering almost the same question is how they drift -- the bridge's copy
+		did not expand components, so a component's text read back empty.
+	**/
+	public static function resolveValue(n:View):View {
+		if (n == null) return null;
+		n = resolve(n);
 		if (n == null) return null;
 		return n.liveBuild != null ? cast n.liveBuild() : n;
+	}
+
+	static function valueOf(n:View):View {
+		return resolveValue(n);
 	}
 
 	public function hasProp(n:View, key:String):Bool {
@@ -184,16 +219,19 @@ class ViewSource implements NodeSource<View> {
 	}
 
 	public function modifierCount(n:View):Int {
+		n = resolve(n);
 		if (n == null || n.modifierChain == null) return 0;
 		return n.modifierChain.length;
 	}
 
 	public function modifierType(n:View, index:Int):String {
+		n = resolve(n);
 		if (n == null || n.modifierChain == null || index < 0 || index >= n.modifierChain.length) return "";
 		return Type.enumConstructor(n.modifierChain[index]);
 	}
 
 	public function modifierFloat(n:View, index:Int, param:Int):Float {
+		n = resolve(n);
 		if (n == null || n.modifierChain == null || index < 0 || index >= n.modifierChain.length) return 0.0;
 		var params = Type.enumParameters(n.modifierChain[index]);
 		if (param < 0 || param >= params.length) return 0.0;
@@ -204,6 +242,7 @@ class ViewSource implements NodeSource<View> {
 	}
 
 	public function modifierString(n:View, index:Int, param:Int):String {
+		n = resolve(n);
 		if (n == null || n.modifierChain == null || index < 0 || index >= n.modifierChain.length) return "";
 		var params = Type.enumParameters(n.modifierChain[index]);
 		if (param < 0 || param >= params.length) return "";
@@ -226,6 +265,7 @@ class ViewSource implements NodeSource<View> {
 		`atelier/nui-adoption.md`.
 	**/
 	public function modifierHasParam(n:View, index:Int, param:Int):Bool {
+		n = resolve(n);
 		if (n == null || n.modifierChain == null || index < 0 || index >= n.modifierChain.length) return false;
 		var params = Type.enumParameters(n.modifierChain[index]);
 		if (param < 0 || param >= params.length) return false;
@@ -233,6 +273,7 @@ class ViewSource implements NodeSource<View> {
 	}
 
 	public function actionId(n:View):Int {
+		n = resolve(n);
 		if (actionOf(n) == null) return -1;
 		var i = _actions.indexOf(n);
 		if (i >= 0) return i;
@@ -267,6 +308,7 @@ class ViewSource implements NodeSource<View> {
 		to the point where they do not.
 	**/
 	public function invokeAction(n:View):Void {
+		n = resolve(n);
 		apply(actionOf(n));
 	}
 

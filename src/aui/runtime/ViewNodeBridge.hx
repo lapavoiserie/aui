@@ -169,8 +169,7 @@ class ViewNodeBridge {
 	**/
 	static function valueOf(node:Dynamic):Dynamic {
 		if (node == null) return null;
-		var view:aui.View = cast node;
-		return view.liveBuild != null ? view.liveBuild() : node;
+		return ViewSource.resolveValue(cast node);
 	}
 
 	public static function getText(node:Dynamic):String {

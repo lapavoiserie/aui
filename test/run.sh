@@ -64,6 +64,14 @@ failures=0
 cover Couvert    pass              || failures=1
 cover NonCouvert reject Image      || failures=1
 
+# A view type the application declared itself: judged like any other, since the
+# check watching only `aui.ui` left users' own nodes to fail silently.
+cover CustomPrimitive reject Badge || failures=1
+
+# A ViewComponent is expanded, never drawn: demanding a branch for it would be
+# asking the renderer for dead code.
+cover Composed   pass              || failures=1
+
 [ $failures -eq 0 ] || { echo ""; echo "coverage: failed"; exit 1; }
 echo ""
 echo "all good"

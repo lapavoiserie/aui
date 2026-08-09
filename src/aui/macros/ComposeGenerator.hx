@@ -2212,6 +2212,16 @@ class ComposeGenerator {
 		};
 	}
 
+	/** A composition unit, expanded rather than drawn. **/
+	static function isComponent(cls:ClassType):Bool {
+		var current = cls;
+		while (current != null) {
+			if (current.name == "ViewComponent" && current.pack.join(".") == "aui") return true;
+			current = current.superClass == null ? null : current.superClass.t.get();
+		}
+		return false;
+	}
+
 	static function extendsView(cls:ClassType):Bool {
 		var current = cls;
 		while (current != null) {
@@ -2228,11 +2238,20 @@ class ComposeGenerator {
 		switch (e.expr) {
 			case TNew(ref, _, _):
 				var cls = ref.get();
-				// Only renderable nodes. `aui.ui.Tab` is a plain class carrying a
-				// title and a content view -- it never becomes a node, so the
-				// renderer has nothing to draw for it and demanding a branch
-				// would be asking for dead code.
-				if (cls.pack.join(".") == "aui.ui" && extendsView(cls) && !covered.exists(cls.name)) {
+				// Only renderable nodes.
+				//
+				// `aui.ui.Tab` is a plain class carrying a title and a content
+				// view -- it never becomes a node, so demanding a branch for it
+				// would be asking for dead code. A `ViewComponent` is expanded
+				// into what its body() returns, so it is never drawn either.
+				//
+				// Everything else that is a View is judged, **including a type the
+				// application declared itself**. Restricting this to `aui.ui` was
+				// an angle only our own code was watched from: a user's
+				// `class Badge extends View` compiled clean and drew `?Badge` on
+				// the screen -- the silent failure this check exists to remove,
+				// left in place for exactly the people it should protect.
+				if (extendsView(cls) && !isComponent(cls) && !covered.exists(cls.name)) {
 					offenders.push({name: cls.name, pos: e.pos});
 				}
 			default:

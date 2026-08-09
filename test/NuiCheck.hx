@@ -262,8 +262,39 @@ class NuiCheck {
 		check("a constant value is not deferred", tree.children[1].liveBuild == null);
 		check("a container is never deferred", tree.liveBuild == null);
 
+		// --- a component is described by what it renders ---
+		//
+		// A ViewComponent has no rendering of its own. If the source described it
+		// as itself, every consumer of the pull contract would meet a node type
+		// no renderer knows -- which is what a user's own view type used to do.
+		var comp = new Row("composé");
+		var cs = new ViewSource(comp);
+		check("a component reports the type it expands to", cs.typeOf(comp) == "Text",
+			cs.typeOf(comp));
+		check("and its value is readable through the bridge",
+			ViewNodeBridge.getText(comp) == "composé", ViewNodeBridge.getText(comp));
+
+		var host = new VStack(null, null, [comp]);
+		var hs = new ViewSource(host);
+		check("a component nested in a tree is expanded too",
+			hs.typeOf(hs.childAt(host, 0)) == "Text");
+
 		Sys.println(failures == 0 ? "\nall good" : '\n$failures failed');
 		Sys.exit(failures == 0 ? 0 : 1);
+	}
+}
+
+/** A component: no rendering of its own, expanded into what body() returns. **/
+class Row extends aui.ViewComponent {
+	public var title:String;
+
+	public function new(title:String) {
+		super();
+		this.title = title;
+	}
+
+	override public function body():View {
+		return new Text(title);
 	}
 }
 
