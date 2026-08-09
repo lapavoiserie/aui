@@ -40,8 +40,9 @@ import androidx.compose.ui.unit.dp
  * ## What it does not do yet
  *
  * `Text.withState("count: {n}")` builds a *template* consumed by the static
- * generator, so it renders empty here. Plain interpolation — `Text("count: " +
- * n.get())` — works, because `body()` runs again on every generation.
+ * generator; here the bridge resolves its names against the state registry.
+ * Plain interpolation — `Text("count: " + n.get())` — works too, because
+ * `body()` runs again on every recomposition.
  */
 
 /** A node of the Haxe tree, seen from Kotlin. */
@@ -88,26 +89,14 @@ value class ViewNode(val handle: Any) {
 }
 
 /**
- * The current tree generation.
- *
- * An action writes into a Haxe `State<T>`, which is a Compose `MutableState`
- * underneath — but the *tree* holds values read when `body()` ran, so a write
- * changes nothing until `body()` runs again. Bumping this is what asks for that,
- * and because it is Compose state, the recomposition is Compose's own.
+ * State the renderer owns, as opposed to state the view tree describes.
  */
 object DynamicHost {
-    var generation by mutableIntStateOf(0)
-        private set
-
-    fun invalidate() {
-        generation++
-    }
-
     /**
      * Which tab is showing.
      *
      * Held here rather than in a `remember` inside the TabView branch: the tree
-     * is rebuilt from Haxe on every generation, so a slot inside a recursive
+     * is rebuilt from Haxe on every recomposition, so a slot inside a recursive
      * `DynamicView` is not a stable home for selection -- it reset to 0 on the
      * recomposition the click itself caused, and the tab appeared not to
      * respond at all.
@@ -126,10 +115,24 @@ object DynamicHost {
 /** Root composable for the dynamic path: rebuilds the tree, then draws it. */
 @Composable
 fun DynamicRoot() {
-    val root = remember(DynamicHost.generation) {
-        ViewNodeBridge.rebuild()
-        ViewNodeBridge.getRoot()?.let { ViewNode(it) }
-    }
+    // Build the tree **inside** composition, deliberately, and not in a
+    // `remember`.
+    //
+    // `body()` reads the app's states, and those reads go through StateBridge to
+    // a Compose MutableState. Performed here, they are recorded by the snapshot
+    // system -- so a write to any state the view depends on recomposes this and
+    // rebuilds the tree, with nothing to call by hand.
+    //
+    // A `remember(generation)` did the opposite: it hid every read behind a
+    // cache, which is why each editing control had to invalidate a counter. It
+    // also meant a state written from anywhere *other* than a UI event -- a
+    // timer, an async load -- never reached the screen at all.
+    //
+    // The cost is honest: any write rebuilds the whole tree. Per-property
+    // liveness is finer and needs the values to be thunks rather than computed
+    // when `body()` ran; see atelier/transpiler-vs-live-tree.md.
+    ViewNodeBridge.rebuild()
+    val root = ViewNodeBridge.getRoot()?.let { ViewNode(it) }
 
     if (root == null) {
         // setApp() has not run, or body() returned nothing. Draw nothing rather
@@ -192,18 +195,13 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             val hasAction = node.actionId >= 0
             Button(
                 onClick = {
-                    // This one stays, and it is worth saying why.
-                    //
-                    // A value read *live* -- a state template, a field, a toggle
-                    // -- refreshes on its own, because Compose tracks the read.
-                    // But a value **frozen** into the node when `body()` ran does
-                    // not: `new Text("count: " + n.get())` computed its string
-                    // once, and nothing will recompute it. A StateAction can
-                    // change either, and can change the tree's *shape*, so the
-                    // rebuild stays here until property reads are live too.
+                    // No invalidate here either: the action writes a state that
+                    // `body()` read during composition, so Compose recomposes
+                    // DynamicRoot and the tree is rebuilt from it. The old
+                    // version of this file called rebuild() and never invoked
+                    // anything -- every button redrew the same tree.
                     if (hasAction) {
                         ViewNodeBridge.invokeAction(handle)
-                        DynamicHost.invalidate()
                     }
                 },
                 enabled = hasAction,
