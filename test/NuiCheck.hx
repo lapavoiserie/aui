@@ -322,6 +322,22 @@ class NuiCheck {
 		check("a write to the list is seen by the next generation",
 			after.childCount(loop) == 5, Std.string(after.childCount(loop)));
 
+		// A list read must happen while the tree is being built, not when a
+		// walker first reaches it. Compose records the read against whatever
+		// composable is walking, so a lazily-read list belongs to a child of
+		// DynamicRoot -- and a write to it recomposed that child, which got the
+		// memo back from a generation nobody had rebuilt. On a device the new
+		// row simply never appeared.
+		var lazyItems = new State<Array<String>>(["a", "b"], "lazyItems");
+		var lazyTree:View = new VStack(null, null, [
+			new aui.ui.ForEach(lazyItems, (s:String) -> new Text(s))
+		]);
+		var reads = 0;
+		var counting = new ViewSource(lazyTree);
+		counting.classify();
+		check("classify() reaches a list without anyone walking first",
+			counting.childCount(lazyTree) == 2, Std.string(counting.childCount(lazyTree)));
+
 		// Where *one* view is expected -- the root here -- there are no siblings
 		// to become. Left alone it would have reached the renderer as a node type
 		// with no branch, so it becomes the stack the static generator emitted.

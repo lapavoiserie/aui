@@ -28,6 +28,32 @@ class ViewSource implements NodeSource<View> {
 	final _root:View;
 	final _actions:Array<View>;
 
+	/**
+		Walk the whole tree once, so every lazy part has been read by the time
+		this returns.
+
+		Expansion is lazy: a `ForEach`'s list is read when the walk reaches it.
+		Under Compose that read is recorded against whichever composable is
+		walking — a *child* of `DynamicRoot`, not `DynamicRoot` itself. So a
+		write to the list recomposed that child, which asked `childrenOf` again
+		and got the memo from a generation that had not been rebuilt: the new row
+		never appeared, and nothing said why.
+
+		Forcing the walk here puts the read inside the scope that calls
+		`rebuild()`, so a write to a list rebuilds the tree, as a write to
+		anything the tree's shape depends on must.
+	**/
+	public function classify():Void {
+		visit(_root, 0);
+	}
+
+	function visit(n:View, depth:Int):Void {
+		// A tree deep enough to reach this is a cycle, not a view.
+		if (n == null || depth > 512) return;
+		var count = childCount(n);
+		for (i in 0...count) visit(childAt(n, i), depth + 1);
+	}
+
 	/** Expanded child lists, one generation of the tree — see `childrenOf`. **/
 	var _children:haxe.ds.ObjectMap<View, Array<View>>;
 

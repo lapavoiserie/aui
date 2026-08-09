@@ -55,6 +55,8 @@ class ViewNodeBridge {
 		if (_app == null) return;
 		_root = _app.body();
 		_source = new ViewSource(_root);
+		// Force the lazy parts inside this scope: see ViewSource.classify.
+		_source.classify();
 	}
 
 	/**
