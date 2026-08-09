@@ -74,6 +74,11 @@ value class ViewNode(val handle: Any) {
     val toggleValue: Boolean get() = ViewNodeBridge.toggleValue(handle)
     fun setToggleValue(value: Boolean) = ViewNodeBridge.setToggleValue(handle, value)
 
+    val sliderValue: Double get() = ViewNodeBridge.sliderValue(handle)
+    fun setSliderValue(value: Double) = ViewNodeBridge.setSliderValue(handle, value)
+    val sliderMin: Double get() = ViewNodeBridge.sliderMin(handle)
+    val sliderMax: Double get() = ViewNodeBridge.sliderMax(handle)
+
     val modifierCount: Int get() = ViewNodeBridge.modifierCount(handle)
     fun modifierType(index: Int): String = ViewNodeBridge.modifierType(handle, index)
     fun modifierFloat(index: Int, param: Int = 0): Double =
@@ -297,6 +302,20 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
                     // No invalidate -- see the TextField above.
                     node.setToggleValue(it)
                 }
+            )
+        }
+
+        // A Slider writes back on every drag, and reads its value from the cell
+        // rather than keeping a copy: two copies of a value are two things that
+        // can disagree, and the state write recomposes this anyway.
+        "Slider" -> {
+            val lo = node.sliderMin.toFloat()
+            val hi = node.sliderMax.toFloat()
+            Slider(
+                value = node.sliderValue.toFloat().coerceIn(minOf(lo, hi), maxOf(lo, hi)),
+                onValueChange = { node.setSliderValue(it.toDouble()) },
+                valueRange = lo..(if (hi > lo) hi else lo + 0.0001f),
+                modifier = mod
             )
         }
 

@@ -287,6 +287,26 @@ class ViewNodeBridge {
 		if (st != null) st.set(value);
 	}
 
+	public static function sliderValue(node:Dynamic):Float {
+		var st = stateOf(node, "valueState");
+		if (st == null) return 0.0;
+		var v:Dynamic = st.get();
+		return v == null ? 0.0 : (v : Float);
+	}
+
+	public static function setSliderValue(node:Dynamic, value:Float):Void {
+		var st = stateOf(node, "valueState");
+		if (st != null) st.set(value);
+	}
+
+	public static function sliderMin(node:Dynamic):Float {
+		return reader().floatProp(node, "min");
+	}
+
+	public static function sliderMax(node:Dynamic):Float {
+		return reader().floatProp(node, "max");
+	}
+
 	/** A state a view holds under `field`, or null if it was built without one. **/
 	static function stateOf(node:Dynamic, field:String):Null<Dynamic> {
 		if (node == null) return null;

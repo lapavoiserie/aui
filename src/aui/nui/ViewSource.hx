@@ -332,31 +332,52 @@ class ViewSource implements NodeSource<View> {
 	}
 
 	public function stringProp(n:View, key:String):String {
-		n = valueOf(n);
-		if (n == null || n.properties == null) return "";
-		var val:Dynamic = n.properties.get(key);
-		return val != null ? Std.string(val) : "";
+		var val = rawValue(valueOf(n), key);
+		if (val == null) return "";
+		return Reflect.isEnumValue(val) ? Type.enumConstructor(val) : Std.string(val);
 	}
 
 	public function intProp(n:View, key:String):Int {
-		n = valueOf(n);
-		if (n == null || n.properties == null) return 0;
-		var val:Dynamic = n.properties.get(key);
-		return val != null ? cast(val, Int) : 0;
+		var val = rawValue(valueOf(n), key);
+		if (val == null) return 0;
+		if (Std.isOfType(val, Int)) return val;
+		if (Std.isOfType(val, Float)) return Std.int(val);
+		var parsed = Std.parseInt(Std.string(val));
+		return parsed == null ? 0 : parsed;
+	}
+
+	/**
+		A named value, from wherever the node keeps it.
+
+		`properties` first, then the node's own **field** of that name. aui's
+		views were written for a transpiler that read `min`, `max`, `spacing`
+		straight off the typed AST, so almost nothing was ever put in the map —
+		and a host asking by name got 0 for a value sitting one field away. A
+		`Slider` built with `min = 0, max = 1` reported a range of 0..0, which
+		pinned its thumb to the left with nothing to say why.
+	**/
+	static function rawValue(n:View, key:String):Null<Dynamic> {
+		if (n == null) return null;
+		if (n.properties != null) {
+			var fromMap:Dynamic = n.properties.get(key);
+			if (fromMap != null) return fromMap;
+		}
+		return Reflect.field(n, key);
 	}
 
 	public function floatProp(n:View, key:String):Float {
-		n = valueOf(n);
-		if (n == null || n.properties == null) return 0.0;
-		var val:Dynamic = n.properties.get(key);
-		return val != null ? cast(val, Float) : 0.0;
+		var val = rawValue(valueOf(n), key);
+		if (val == null) return 0.0;
+		if (Std.isOfType(val, Float) || Std.isOfType(val, Int)) return val;
+		var parsed = Std.parseFloat(Std.string(val));
+		return Math.isNaN(parsed) ? 0.0 : parsed;
 	}
 
 	public function boolProp(n:View, key:String):Bool {
-		n = valueOf(n);
-		if (n == null || n.properties == null) return false;
-		var val:Dynamic = n.properties.get(key);
-		return val != null ? cast(val, Bool) : false;
+		var val = rawValue(valueOf(n), key);
+		if (val == null) return false;
+		if (Std.isOfType(val, Bool)) return val;
+		return Std.string(val) == "true";
 	}
 
 	public function modifierCount(n:View):Int {
@@ -415,7 +436,7 @@ class ViewSource implements NodeSource<View> {
 
 	public function actionId(n:View):Int {
 		n = resolve(n);
-		if (actionOf(n) == null) return -1;
+		if (actionOf(n) == null && tapOf(n) == null) return -1;
 		var i = _actions.indexOf(n);
 		if (i >= 0) return i;
 		_actions.push(n);
@@ -435,6 +456,30 @@ class ViewSource implements NodeSource<View> {
 	}
 
 	/**
+		A plain closure attached with `onTapGesture`, or null.
+
+		aui's own buttons carry a declarative `StateAction`, which the static
+		generator translated to Kotlin. A framework layered on top has no such
+		enum to reach for: `mui.ui.Button(label, () -> ...)` takes a Haxe closure
+		and hangs it on the modifier chain, which is the only place aui offers.
+
+		The static path could not have run it. This one can — the tree is a GC
+		root and the closure is on it — so a node that has one *has* an action,
+		and a button carrying it is enabled rather than greyed out with nothing
+		to explain why.
+	**/
+	static function tapOf(n:View):Null<Void->Void> {
+		if (n == null || n.modifierChain == null) return null;
+		for (modifier in n.modifierChain) {
+			switch (modifier) {
+				case OnTapGesture(action): return action;
+				case _:
+			}
+		}
+		return null;
+	}
+
+	/**
 		Run the node's action.
 
 		**aui's actions are not closures.** A `Button` carries a declarative
@@ -450,7 +495,13 @@ class ViewSource implements NodeSource<View> {
 	**/
 	public function invokeAction(n:View):Void {
 		n = resolve(n);
-		apply(actionOf(n));
+		var declared = actionOf(n);
+		if (declared != null) {
+			apply(declared);
+			return;
+		}
+		var tap = tapOf(n);
+		if (tap != null) tap();
 	}
 
 	static function apply(action:Null<StateAction>):Void {

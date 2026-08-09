@@ -111,6 +111,19 @@ class NuiCheck {
 		new ViewSource(appender).invokeAction(appender);
 		check("Append concatenates", word.get() == "ab", word.get());
 
+		// A closure hung on the modifier chain is an action too. aui's own
+		// buttons carry a StateAction, but a framework layered on top has no
+		// such enum: mui's Button takes a Haxe closure. Without this the button
+		// was drawn greyed out, with nothing to say why.
+		var tapped = 0;
+		var closured = new Button("Fermeture");
+		closured.onTapGesture(() -> tapped++);
+		var cs2 = new ViewSource(closured);
+		check("a tap closure counts as an action", cs2.actionId(closured) >= 0,
+			Std.string(cs2.actionId(closured)));
+		cs2.invokeAction(closured);
+		check("and invoking the node runs it", tapped == 1, Std.string(tapped));
+
 		// --- the optional modifier parameter ---
 		//
 		// `Padding()` means the default 16dp and `Padding(0)` means none, but

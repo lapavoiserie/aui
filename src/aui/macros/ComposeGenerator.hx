@@ -11,6 +11,8 @@ import sys.io.File;
 class ComposeGenerator {
 	static var _appClass:Null<String> = null;
 	static var _appModule:Null<String> = null;
+	// Classes reaching aui.App, and each one's direct parent — see `resolveApp`.
+	static var _appCandidates:Array<{name:String, module:String, parent:Null<String>}> = [];
 	static var _observableClasses:Array<String> = [];
 	static var _viewComponents:Array<String> = [];
 	static var _outputDir:String = "android/app/src/main/kotlin/com/aui/generated";
@@ -78,13 +80,18 @@ class ComposeGenerator {
 						var cls = ref.get();
 						var fullName = cls.pack.join(".") + (cls.pack.length > 0 ? "." : "") + cls.name;
 
+						// Every class whose chain reaches aui.App is a candidate, and
+						// there can be more than one: `mui.App` extends it so a mui
+						// application has two. Taking the last one seen instantiated
+						// the intermediate, whose body() is the inherited default --
+						// the app drew "?EmptyView" and nothing said why. So they are
+						// collected, and the one nobody extends wins.
 						var superClass = cls.superClass;
 						while (superClass != null) {
 							var superRef = superClass.t.get();
 							var superName = superRef.pack.join(".") + (superRef.pack.length > 0 ? "." : "") + superRef.name;
 							if (superName == "aui.App") {
-								_appClass = fullName;
-								_appModule = cls.module;
+								_appCandidates.push({name: fullName, module: cls.module, parent: parentName(cls)});
 								break;
 							}
 							superClass = superRef.superClass;
@@ -106,9 +113,47 @@ class ComposeGenerator {
 		});
 
 		Context.onAfterGenerate(function() {
+			resolveApp();
 			if (_appClass == null) return;
 			generateComposeFiles();
 		});
+	}
+
+	static function parentName(cls:ClassType):Null<String> {
+		if (cls.superClass == null) return null;
+		var p = cls.superClass.t.get();
+		return p.pack.join(".") + (p.pack.length > 0 ? "." : "") + p.name;
+	}
+
+	/**
+		The application to instantiate: the candidate nobody extends.
+
+		A framework layered over aui — `mui` is one — declares its own `App`
+		between the user's and ours, so two classes answer "is this an aui.App".
+		Only one of them has a `body()` worth running, and it is the leaf.
+	**/
+	static function resolveApp():Void {
+		if (_appCandidates.length == 0) return;
+
+		var extended = new Map<String, Bool>();
+		for (candidate in _appCandidates) {
+			if (candidate.parent != null) extended.set(candidate.parent, true);
+		}
+
+		for (candidate in _appCandidates) {
+			if (!extended.exists(candidate.name)) {
+				_appClass = candidate.name;
+				_appModule = candidate.module;
+				return;
+			}
+		}
+
+		// Every candidate is extended by another: a cycle is impossible here, so
+		// this means several leaves. Take the first and say so, rather than
+		// picking silently.
+		_appClass = _appCandidates[0].name;
+		_appModule = _appCandidates[0].module;
+		Context.warning('[AUI] several application classes found; building ' + _appClass, Context.currentPos());
 	}
 
 	static function generateComposeFiles():Void {
@@ -2248,6 +2293,27 @@ class ComposeGenerator {
 	}
 
 	/**
+		Whether the renderer draws this class, or a class it inherits from.
+
+		The check is about the `viewType` a node carries, and a subclass carries
+		its parent's unless it sets its own. `mui.ui.TextInput` extends
+		`aui.ui.TextField` and reports `"TextField"` at runtime — judging it by
+		its Haxe name refused a type the renderer draws perfectly well, and the
+		message named a type nobody had written.
+
+		A class that renames itself is still caught: it has to set `viewType`,
+		and then nothing in the chain matches.
+	**/
+	static function coveredByChain(cls:ClassType, covered:Map<String, Bool>):Bool {
+		var current = cls;
+		while (current != null) {
+			if (covered.exists(current.name)) return true;
+			current = current.superClass == null ? null : current.superClass.t.get();
+		}
+		return false;
+	}
+
+	/**
 		A node with no rendering of its own, expanded before any renderer sees
 		it: a `ViewComponent` into its `body()`, a `ForEach` into its items.
 	**/
@@ -2297,7 +2363,7 @@ class ComposeGenerator {
 				// `class Badge extends View` compiled clean and drew `?Badge` on
 				// the screen -- the silent failure this check exists to remove,
 				// left in place for exactly the people it should protect.
-				if (extendsView(cls) && !isExpanded(cls) && !covered.exists(cls.name)) {
+				if (extendsView(cls) && !isExpanded(cls) && !coveredByChain(cls, covered)) {
 					offenders.push({name: cls.name, pos: e.pos});
 				}
 			default:
