@@ -54,15 +54,20 @@ class ComposeGenerator {
 		// build that emits Compose is checked, by construction.
 		rui.macros.ViewRule.register("aui.App", "body");
 
+		// Which renderer this build targets. Asked once, here, so the
+		// deprecation warning a static build earns lands at the top of its
+		// output rather than beside whichever branch happened to run first.
+		var isDynamic = RenderPath.isDynamic();
+
 		// The dynamic renderer's Haxe half is reached only from Kotlin, so
 		// nothing in Haxe references it and it would never enter the build --
 		// nor survive DCE. Pull it in explicitly, as sui does for its own.
-		if (Context.defined("aui_dynamic")) {
+		if (isDynamic) {
 			Context.getModule("aui.runtime.ViewNodeBridge");
 		}
 
-		// Under -D aui_dynamic, refuse a view the dynamic renderer cannot draw.
-		if (Context.defined("aui_dynamic")) {
+		// Refuse a view the dynamic renderer cannot draw.
+		if (isDynamic) {
 			Context.onAfterTyping(checkDynamicCoverage);
 		}
 
@@ -162,7 +167,7 @@ class ComposeGenerator {
 		// translate into invalid Kotlin, breaking a build that had no use for the
 		// file.
 		var screen = _outputDir + "/MainScreen.kt";
-		if (!Context.defined("aui_dynamic")) {
+		if (RenderPath.isStatic()) {
 			generateMainScreen(packageName, appType);
 		} else if (FileSystem.exists(screen)) {
 			// Left over from a static build: stale, and now misleading.
@@ -389,9 +394,9 @@ class ComposeGenerator {
 		// The dynamic path walks the tree the app builds while running, instead
 		// of the Kotlin the generator emitted from the typed AST. Same app, same
 		// body(): what changes is who reads it, and when.
-		if (Context.defined("aui_dynamic")) {
-			lines.push("        // -D aui_dynamic: hand the app to the Haxe-side tree reader,");
-			lines.push("        // which DynamicRoot() walks through nui's pull contract.");
+		if (RenderPath.isDynamic()) {
+			lines.push("        // Hand the app to the Haxe-side tree reader, which");
+			lines.push("        // DynamicRoot() walks through nui's pull contract.");
 			lines.push("        aui.runtime.ViewNodeBridge.setApp(app)");
 			lines.push("        setContent {");
 			lines.push("            MaterialTheme {");
@@ -973,13 +978,13 @@ class ComposeGenerator {
 				if (StringTools.endsWith(fullName, "ViewComponent") || isComponentName(fullName)) {
 					Context.error('The static path cannot render a ViewComponent ("' + fullName + '").\n'
 						+ '  It would need a composable of its own, carrying the component\'s state.\n'
-						+ '  Build with -D aui_dynamic, which expands components, or inline the\n'
-						+ '  component into a method returning a View (see docs/components.md).',
+						+ '  Drop -D ' + RenderPath.STATIC_DEFINE + ' -- the dynamic renderer, which is\n'
+						+ '  the default, expands components.',
 						Context.currentPos());
 				}
 				Context.error('The static path cannot render "' + fullName + '".\n'
 					+ '  Only aui\'s own view types are emitted to Kotlin here.\n'
-					+ '  Build with -D aui_dynamic, or compose from types aui provides.',
+					+ '  Drop -D ' + RenderPath.STATIC_DEFINE + ', or compose from types aui provides.',
 					Context.currentPos());
 				viewCode = "";
 		}
@@ -1889,24 +1894,24 @@ class ComposeGenerator {
 			Context.warning('[AUI] StateBridge.kt not found in aui/runtime/ — state bridge will be missing', Context.currentPos());
 		}
 
-		// The dynamic renderer, only when asked for. It is Kotlin in package
-		// `aui.runtime` -- the same package as the Haxe ViewNodeBridge it calls,
-		// so the class loader pairs them with no import and no JNI.
+		// The dynamic renderer. It is Kotlin in package `aui.runtime` -- the same
+		// package as the Haxe ViewNodeBridge it calls, so the class loader pairs
+		// them with no import and no JNI.
 		var runtimeDir = "android/app/src/main/kotlin/aui/runtime";
 		var rendererOut = runtimeDir + "/DynamicComposable.kt";
 
-		if (Context.defined("aui_dynamic")) {
+		if (RenderPath.isDynamic()) {
 			ensureDir(runtimeDir);
 			var renderer = locateAuiRuntimeFile("DynamicComposable.kt");
 			if (renderer != null) {
 				copyIfNewer(renderer, rendererOut);
 			} else {
-				Context.warning('[AUI] DynamicComposable.kt not found in aui/runtime/ — -D aui_dynamic will not link', Context.currentPos());
+				Context.warning('[AUI] DynamicComposable.kt not found in aui/runtime/ — the app will not link', Context.currentPos());
 			}
 		} else if (FileSystem.exists(rendererOut)) {
 			// Left over from a dynamic build. The Haxe half it calls
-			// (aui.runtime.ViewNodeBridge) is only pulled into the jar under
-			// -D aui_dynamic, so leaving this file behind breaks the *static*
+			// (aui.runtime.ViewNodeBridge) is only pulled into the jar on the
+			// dynamic path, so leaving this file behind breaks the *static*
 			// build with "Unresolved reference: ViewNodeBridge" -- a failure in
 			// a mode the developer did not even ask for.
 			FileSystem.deleteFile(rendererOut);
@@ -2142,8 +2147,7 @@ class ComposeGenerator {
 			var o = offenders[i];
 			var msg = 'The dynamic renderer cannot draw "' + o.name + '".\n'
 				+ '  Covered types: ' + known.join(", ") + '.\n'
-				+ '  Add it to the when() in aui/runtime/DynamicComposable.kt, or\n'
-				+ '  build without -D aui_dynamic for the static path.';
+				+ '  Add it to the when() in aui/runtime/DynamicComposable.kt.';
 			if (i == offenders.length - 1) Context.error(msg, o.pos);
 			else Context.reportError(msg, o.pos);
 		}
@@ -2243,6 +2247,15 @@ class ComposeGenerator {
 		}
 	}
 
+	/**
+		A node with no rendering of its own, expanded before any renderer sees
+		it: a `ViewComponent` into its `body()`, a `ForEach` into its items.
+	**/
+	static function isExpanded(cls:ClassType):Bool {
+		if (isComponent(cls)) return true;
+		return cls.name == "ForEach" && cls.pack.join(".") == "aui.ui";
+	}
+
 	/** A composition unit, expanded rather than drawn. **/
 	static function isComponent(cls:ClassType):Bool {
 		var current = cls;
@@ -2274,7 +2287,9 @@ class ComposeGenerator {
 				// `aui.ui.Tab` is a plain class carrying a title and a content
 				// view -- it never becomes a node, so demanding a branch for it
 				// would be asking for dead code. A `ViewComponent` is expanded
-				// into what its body() returns, so it is never drawn either.
+				// into what its body() returns, so it is never drawn either, and
+				// neither is a `ForEach` -- it is spliced into its parent's
+				// children by `aui.nui.ViewSource.childrenOf`.
 				//
 				// Everything else that is a View is judged, **including a type the
 				// application declared itself**. Restricting this to `aui.ui` was
@@ -2282,7 +2297,7 @@ class ComposeGenerator {
 				// `class Badge extends View` compiled clean and drew `?Badge` on
 				// the screen -- the silent failure this check exists to remove,
 				// left in place for exactly the people it should protect.
-				if (extendsView(cls) && !isComponent(cls) && !covered.exists(cls.name)) {
+				if (extendsView(cls) && !isExpanded(cls) && !covered.exists(cls.name)) {
 					offenders.push({name: cls.name, pos: e.pos});
 				}
 			default:

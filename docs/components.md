@@ -66,7 +66,8 @@ A component has **no rendering of its own**: it is *expanded* into whatever
 devtool — you never meet the component, only the views it is made of.
 
 That is also why a component is never checked against the renderer's vocabulary:
-asking the renderer for a `Counter` branch would be asking it for dead code.
+asking the renderer for a `Counter` branch would be asking it for dead code. A
+`ForEach` is expanded the same way, into the siblings it yields.
 
 ## What a component is not
 
@@ -83,16 +84,14 @@ class Badge extends View {          // a new node type, not a component
 }
 ```
 
-Under `-D aui_dynamic` this is refused at compile time, naming the type and the
-ones that are covered:
+This is refused at compile time, naming the type and the ones that are covered:
 
 ```
 src/MyApp.hx:32: The dynamic renderer cannot draw "Badge".
   Covered types: Button, Card, ConditionalView, Divider, HStack, ProgressView,
   SafeArea, ScrollView, Section, Spacer, TabView, Text, TextField, Toggle,
   VStack, ZStack.
-  Add it to the when() in aui/runtime/DynamicComposable.kt, or build without
-  -D aui_dynamic for the static path.
+  Add it to the when() in aui/runtime/DynamicComposable.kt.
 ```
 
 A new leaf means teaching the renderer about it. Until AUI offers a registration
@@ -100,13 +99,7 @@ point for that, it is a change to the framework rather than to your app.
 
 ## Which build path
 
-| | Method returning `View` | `ViewComponent` |
-|---|---|---|
-| Static (default) | yes, inlined by the generator | **no** |
-| Dynamic (`-D aui_dynamic`) | yes | yes |
-
-The static path emits Kotlin ahead of time and would need to produce a separate
-composable carrying the component's own state; it does not. Building a component
-without `-D aui_dynamic` is a compile error that says so — it used to be dropped
-into a comment in the generated file, which meant the component simply vanished
-from the screen.
+Nothing to choose: `aui` renders through the dynamic renderer, and a component
+works. The static transpiler is [decommissioned](render-paths.md) and does not
+render one — building with `-D aui_static` says so rather than dropping the
+component silently, which is what it used to do.

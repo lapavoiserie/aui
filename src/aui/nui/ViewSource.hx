@@ -11,26 +11,28 @@ import aui.state.StateAction;
 	The node handle is `aui.View` itself: aui builds a live Haxe tree on the JVM,
 	so nothing needs copying — the same choice `sui` and `cui` made.
 
-	## What it is for, and what is still missing
+	## What it is for
 
-	aui renders through generated Kotlin, so it does not need this to draw. It
-	exists because `runtime/DynamicComposable.kt` — the Compose-side runtime
-	renderer for hot reload — has **no Haxe half at all**, and is marked dead
-	code in its own header for exactly that reason. This is that half, written
-	against the shared contract instead of against a second private accessor
-	set, which is what `sui` ended up with.
+	This is how an aui app is drawn: `runtime/DynamicComposable.kt` walks the
+	tree through these methods, so what a consumer of the contract sees and what
+	Compose draws are the same description. It is written against the shared
+	contract rather than a private accessor set, which is what `sui` ended up
+	with — two answers to almost the same question, free to drift.
 
-	**Not yet wired**, and saying so is the point: `DynamicComposable.kt` still
-	declares its accessors as `external fun` over `System.loadLibrary`, which
-	assumes a native library — but aui compiles Haxe to the **JVM**, where
-	`StateBridge` already shows the right shape: Kotlin and Haxe on one JVM,
-	resolved by the class loader, no JNI. Converting it, emitting it from
-	`ComposeGenerator` and switching `MainActivity` to it needs an Android
-	build to verify, so it is not claimed here.
+	It also decides what the renderer never has to know about. A node with no
+	rendering of its own is expanded here: a `ViewComponent` into its `body()`
+	(see `resolve`), a `ForEach` into the siblings it yields (see `childrenOf`).
+	A renderer branch for either would be dead code.
 **/
 class ViewSource implements NodeSource<View> {
 	final _root:View;
 	final _actions:Array<View>;
+
+	/** Expanded child lists, one generation of the tree — see `childrenOf`. **/
+	var _children:haxe.ds.ObjectMap<View, Array<View>>;
+
+	/** `ForEach` nodes standing where one view is expected — see `resolveWalked`. **/
+	var _wrapped:haxe.ds.ObjectMap<View, View>;
 
 	public function new(root:View) {
 		_root = root;
@@ -47,7 +49,7 @@ class ViewSource implements NodeSource<View> {
 	public function rebuild():Void {}
 
 	public function typeOf(n:View):String {
-		n = resolve(n);
+		n = resolveWalked(n);
 		if (n == null) return "";
 		var vt = n.viewType;
 		if (vt == null) return "";
@@ -82,7 +84,7 @@ class ViewSource implements NodeSource<View> {
 		source is for. Any consumer benefits, not just Compose.
 	**/
 	public function childCount(n:View):Int {
-		n = resolve(n);
+		n = resolveWalked(n);
 		if (n == null) return 0;
 
 		var tabs = tabsOf(n);
@@ -92,11 +94,11 @@ class ViewSource implements NodeSource<View> {
 			return Reflect.field(n, "elseView") == null ? 1 : 2;
 		}
 
-		return n.children == null ? 0 : n.children.length;
+		return childrenOf(n).length;
 	}
 
 	public function childAt(n:View, index:Int):View {
-		n = resolve(n);
+		n = resolveWalked(n);
 		if (n == null || index < 0) return null;
 
 		var tabs = tabsOf(n);
@@ -110,8 +112,121 @@ class ViewSource implements NodeSource<View> {
 			};
 		}
 
-		if (n.children == null || index >= n.children.length) return null;
-		return n.children[index];
+		var children = childrenOf(n);
+		return index >= children.length ? null : children[index];
+	}
+
+	/**
+		The node a walker should read, for a node it reached by itself.
+
+		`resolve` expands a component; this also covers a `ForEach` that sits
+		where **one** view is expected -- the root, a tab's content, a
+		conditional's branch. In a child list a `ForEach` becomes siblings
+		(`childrenOf`), but a slot has no siblings to become, and the answer that
+		does not lose the items is the stack the static generator emitted there:
+		a `Column`.
+
+		Memoised, because a walker asks `typeOf` then `childCount` then `childAt`
+		about the same node, and a fresh wrapper each time would hand Compose a
+		new identity on every question.
+	**/
+	function resolveWalked(n:View):View {
+		var resolved = resolve(n);
+		if (resolved == null || resolved.viewType != "ForEach") return resolved;
+
+		if (_wrapped == null) _wrapped = new haxe.ds.ObjectMap();
+		var cached = _wrapped.get(resolved);
+		if (cached != null) return cached;
+
+		var items = forEachItems(resolved);
+		var stack:View = new aui.ui.VStack(null, null, items == null ? [] : items);
+		_wrapped.set(resolved, stack);
+		return stack;
+	}
+
+	/**
+		A node's children, with every `ForEach` among them replaced by the views
+		it produces.
+
+		A `ForEach` is not a thing on screen: it is a loop that yields siblings.
+		The static generator unrolled it while emitting Kotlin, which is why it
+		never needed a description here -- and why, the day the dynamic renderer
+		became the path, a `ForEach` reached it as a childless node of a type it
+		had no branch for.
+
+		Splicing it into the parent, rather than teaching the renderer a
+		`"ForEach"` branch, is the same answer `ViewComponent` gets: a node with
+		no rendering of its own is expanded before any consumer sees it. It also
+		keeps the loop *out* of the renderer's vocabulary, where a branch would
+		have had to reproduce the parent's layout scope to place the items as
+		siblings rather than inside a box of their own.
+
+		The items are read here, when the consumer asks -- under Compose that is
+		inside the composition doing the asking, so a write to the list
+		recomposes it and nothing above.
+	**/
+	function childrenOf(n:View):Array<View> {
+		if (n.children == null || n.children.length == 0) return [];
+
+		// Memoised per generation: `childAt` is called once per index, and
+		// expanding on each call would re-run every item's builder n times.
+		// The tree is rebuilt by replacing the source, so nothing here goes
+		// stale -- see `ViewNodeBridge.rebuild`.
+		if (_children == null) _children = new haxe.ds.ObjectMap();
+		var cached = _children.get(n);
+		if (cached != null) return cached;
+
+		var out:Array<View> = [];
+		var expanded = false;
+		for (child in n.children) {
+			var items = forEachItems(child);
+			if (items == null) {
+				out.push(child);
+			} else {
+				expanded = true;
+				for (item in items) out.push(item);
+			}
+		}
+
+		var result = expanded ? out : n.children;
+		_children.set(n, result);
+		return result;
+	}
+
+	/** The views a `ForEach` yields, or null for anything else. **/
+	static function forEachItems(n:View):Null<Array<View>> {
+		if (n == null || n.viewType != "ForEach") return null;
+
+		var builder:Dynamic = Reflect.field(n, "builder");
+		if (builder == null || !Reflect.isFunction(builder)) return [];
+
+		// The items arrive either as the collection itself or as the `State`
+		// holding it -- `@:state var colors` reads back as the cell, and
+		// `new ForEach(colors, ...)` hands that cell straight over.
+		var source:Dynamic = Reflect.field(n, "itemsState");
+		if (source == null) return [];
+		if (Std.isOfType(source, aui.state.State)) source = (cast source : aui.state.State<Dynamic>).get();
+		if (source == null) return [];
+
+		// An `Array`, or anything iterable -- `rui.structures.ImmutableList` is
+		// the other collection a view is allowed to read, and it answers
+		// `iterator()` like any other.
+		var items:Array<Dynamic> = [];
+		if (Std.isOfType(source, Array)) {
+			items = cast source;
+		} else {
+			var makeIterator:Dynamic = Reflect.field(source, "iterator");
+			if (!Reflect.isFunction(makeIterator)) return [];
+			var iter:Dynamic = Reflect.callMethod(source, makeIterator, []);
+			while (iter.hasNext()) items.push(iter.next());
+		}
+
+		var out:Array<View> = [];
+		for (item in items) {
+			var view:Dynamic = Reflect.callMethod(null, builder, [item]);
+			if (view != null) out.push(cast view);
+		}
+		return out;
 	}
 
 	/** A `TabView`'s tabs, or null for anything else. **/

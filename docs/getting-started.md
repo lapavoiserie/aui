@@ -133,15 +133,18 @@ After running `haxe build.hxml`, your project will contain:
 ```
 MyApp/
   build/
-    app-logic.jar                    # Haxe JVM output
+    app-logic.jar                    # Haxe JVM output — your app, views included
   android/
     app/
       build.gradle.kts               # App build config
       src/main/
         AndroidManifest.xml           # Android manifest
         kotlin/com/aui/generated/
-          MainActivity.kt             # Entry point
-          MainScreen.kt               # Your UI (generated from body())
+          MainActivity.kt             # Entry point; hands the app to the reader
+        kotlin/aui/runtime/
+          DynamicComposable.kt        # Draws your tree, on the device
+        kotlin/aui/state/
+          StateBridge.kt              # @:state, as something Compose observes
         res/values/
           themes.xml                  # Material theme
     build.gradle.kts                  # Root build config

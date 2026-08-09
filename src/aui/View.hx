@@ -11,7 +11,7 @@ class View {
 	/**
 		Rebuilds this node with its values evaluated *now*.
 
-		Set by `aui.macros.LiveProps` under `-D aui_dynamic`: the node itself is
+		Set by `aui.macros.LiveProps` on the dynamic path: the node itself is
 		constructed with neutral values, so building it reads no state, and this
 		carries the real expression. The dynamic renderer calls it when a value is
 		asked for, which is what puts the state read inside the composable that

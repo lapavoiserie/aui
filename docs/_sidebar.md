@@ -21,6 +21,7 @@
   - [Modifiers](modifiers.md)
   - [View Builders](view-builders.md)
   - [Components](components.md)
+  - [Render paths](render-paths.md)
 
 - **Reference**
   - [CLI](cli.md)

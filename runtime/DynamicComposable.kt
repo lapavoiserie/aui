@@ -12,10 +12,13 @@ import androidx.compose.ui.unit.dp
 /**
  * Renders a live Haxe view tree with Compose, at runtime.
  *
- * The static path — `ComposeGenerator` reading the typed AST and emitting
- * `MainScreen` — is what an aui app ships. This one walks the tree the app
- * builds *while running*, so the UI can change without regenerating Kotlin.
- * Enable it with `-D aui_dynamic`.
+ * This is how an aui app draws. It walks the tree the app builds *while
+ * running*, so Compose sees the state each view reads and a write recomposes
+ * the node that read it -- and so a `ViewComponent`, expanded here, is just a
+ * view.
+ *
+ * The other path -- `ComposeGenerator` reading the typed AST and emitting a
+ * `MainScreen` ahead of time -- is decommissioned, behind `-D aui_static`.
  *
  * ## How it reaches Haxe
  *
@@ -314,9 +317,8 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             // A type this renderer does not know.
             //
             // **A view written in the app never reaches here.** ComposeGenerator
-            // refuses to compile it under -D aui_dynamic, naming the type and
-            // the covered set -- a knowable defect belongs at compile time, not
-            // on screen. This branch is for a tree that arrives as **data**,
+            // refuses to compile it, naming the type and the covered set -- a
+            // knowable defect belongs at compile time, not on screen. This branch is for a tree that arrives as **data**,
             // where nothing could have been checked: the same boundary wui
             // draws with `Foreign.node`.
             //

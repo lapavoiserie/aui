@@ -1,6 +1,6 @@
 # AUI
 
-AUI is a framework for building **native Android apps in Haxe**. It compiles your Haxe source code into Jetpack Compose Kotlin, producing genuine native Android applications with Material Design 3.
+AUI is a framework for building **native Android apps in Haxe**. Your views are drawn by Jetpack Compose, producing genuine native Android applications with Material Design 3.
 
 AUI is the Android counterpart of [SUI](https://github.com/Pign/sui), which targets Apple platforms (macOS, iOS, visionOS).
 
@@ -12,20 +12,28 @@ Haxe source (.hx)
      v
 AUI macros (compile-time)
      |
-     +---> ComposeGenerator ---> Generated .kt (Composables)
+     +---> JVM target ---------> app-logic.jar (your app, views included)
      |
-     +---> JVM target ---------> app-logic.jar (bytecode)
-     |
-     +---> GradleProject ------> Android project (build.gradle.kts, manifest)
-                                       |
-                                       v
-                                  Gradle build ---> APK
+     +---> GradleProject ------> Android project (manifest, MainActivity,
+                                 |                DynamicComposable.kt)
+                                 v
+                            Gradle build ---> APK
+                                 |
+                                 v          at runtime: body() builds a tree,
+                            DynamicRoot() --> Compose walks it through nui
 ```
 
 1. You write your app in Haxe using the AUI view DSL
-2. The `ComposeGenerator` macro walks your `body()` method at compile time and emits Kotlin `@Composable` functions
-3. Haxe's JVM target compiles your business logic to a `.jar`
-4. Gradle builds the final APK from the generated Kotlin + JAR
+2. Haxe's JVM target compiles it — business logic *and* views — to a `.jar`
+3. The `ComposeGenerator` macro emits the Android project around it: manifest,
+   Gradle files, a `MainActivity` that hands the app to the tree reader, and the
+   Compose renderer that walks the tree
+4. Gradle builds the final APK
+
+Your `body()` runs on the device. Compose sees the state it reads, so a write
+recomposes the node that read it — see [Render paths](render-paths.md) for what
+that buys, and for the decommissioned transpiler that used to emit your views as
+Kotlin ahead of time.
 
 ## Features
 

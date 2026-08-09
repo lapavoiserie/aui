@@ -24,7 +24,7 @@ using haxe.macro.ExprTools;
 
 	## The rewrite
 
-	Under `-D aui_dynamic`, inside `body()` and any method declared to return a
+	On the dynamic path, inside `body()` and any method declared to return a
 	`View`:
 
 	```haxe
@@ -172,7 +172,9 @@ class LiveProps {
 
 	/** Rewrite `body()` and every method declared to return a `View`. **/
 	public static function apply(fields:Array<Field>):Array<Field> {
-		if (!Context.defined("aui_dynamic")) return fields;
+		// Nothing to defer on the static path: the generator reads `body()` at
+		// compile time, and a thunk is exactly what it cannot translate.
+		if (RenderPath.isStatic()) return fields;
 
 		for (field in fields) {
 			switch (field.kind) {

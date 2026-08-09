@@ -132,8 +132,8 @@ class StateMacro {
 		}
 
 		// Defer view values into thunks, so a read lands in the composable that
-		// displays it rather than the one that built the tree. Only under
-		// -D aui_dynamic; see aui.macros.LiveProps.
+		// displays it rather than the one that built the tree. Dynamic path
+		// only; see aui.macros.LiveProps.
 		return LiveProps.apply(newFields);
 	}
 }

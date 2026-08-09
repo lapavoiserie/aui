@@ -239,7 +239,7 @@ class NuiCheck {
 
 		// --- deferred values: the grain LiveProps buys ---
 		//
-		// Under -D aui_dynamic the macro rewrites a view whose value is computed
+		// On the dynamic path the macro rewrites a view whose value is computed
 		// from state: the node is built with a neutral value and carries the real
 		// expression in `liveBuild`. That is what puts the state read inside the
 		// composable displaying it rather than the one building the tree -- on a
@@ -278,6 +278,60 @@ class NuiCheck {
 		var hs = new ViewSource(host);
 		check("a component nested in a tree is expanded too",
 			hs.typeOf(hs.childAt(host, 0)) == "Text");
+
+		// --- a ForEach is spliced into its parent, never drawn ---
+		//
+		// The static generator unrolled the loop while emitting Kotlin. Nothing
+		// unrolled it for a consumer walking the tree, so the day the dynamic
+		// renderer became the default a ForEach arrived as a childless node of a
+		// type no renderer has a branch for. It is expanded here instead, like a
+		// component -- the items become siblings, which is what the loop means.
+		var items = new State<Array<String>>(["red", "green"], "items");
+		var loop:View = new VStack(null, null, [
+			new Text("head"),
+			new aui.ui.ForEach(items, (c:String) -> new Text("item: " + c)),
+			new Text("tail")
+		]);
+		var ls = new ViewSource(loop);
+		check("a ForEach yields siblings, not a node of its own",
+			ls.childCount(loop) == 4, Std.string(ls.childCount(loop)));
+		check("the items keep their place among the siblings",
+			ls.typeOf(ls.childAt(loop, 1)) == "Text"
+			&& ViewNodeBridge.getText(ls.childAt(loop, 1)) == "item: red"
+			&& ViewNodeBridge.getText(ls.childAt(loop, 3)) == "tail",
+			ViewNodeBridge.getText(ls.childAt(loop, 1)));
+
+		// Reading twice must not build the items twice: `childAt` is called once
+		// per index, and an un-memoised expansion re-ran every builder each time.
+		var built = 0;
+		var counted:View = new VStack(null, null, [
+			new aui.ui.ForEach(items, function(c:String) {
+				built++;
+				return new Text(c);
+			})
+		]);
+		var ks = new ViewSource(counted);
+		ks.childCount(counted);
+		ks.childAt(counted, 0);
+		ks.childAt(counted, 1);
+		check("the items are built once per generation", built == 2, Std.string(built));
+
+		// A new generation reads the list again: a source describes one tree.
+		items.set(["red", "green", "blue"]);
+		var after = new ViewSource(loop);
+		check("a write to the list is seen by the next generation",
+			after.childCount(loop) == 5, Std.string(after.childCount(loop)));
+
+		// Where *one* view is expected -- the root here -- there are no siblings
+		// to become. Left alone it would have reached the renderer as a node type
+		// with no branch, so it becomes the stack the static generator emitted.
+		var bare:View = new aui.ui.ForEach(items, (c:String) -> new Text(c));
+		var bs = new ViewSource(bare);
+		check("a ForEach standing alone becomes a stack of its items",
+			bs.typeOf(bare) == "VStack" && bs.childCount(bare) == 3,
+			bs.typeOf(bare) + "/" + bs.childCount(bare));
+		check("and it keeps one identity across the questions asked about it",
+			bs.childAt(bare, 0) == bs.childAt(bare, 0));
 
 		Sys.println(failures == 0 ? "\nall good" : '\n$failures failed');
 		Sys.exit(failures == 0 ? 0 : 1);
