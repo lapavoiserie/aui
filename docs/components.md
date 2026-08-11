@@ -89,8 +89,8 @@ This is refused at compile time, naming the type and the ones that are covered:
 ```
 src/MyApp.hx:32: The dynamic renderer cannot draw "Badge".
   Covered types: Button, Card, ConditionalView, Divider, HStack, ProgressView,
-  SafeArea, ScrollView, Section, Spacer, TabView, Text, TextField, Toggle,
-  VStack, ZStack.
+  SafeArea, ScrollView, Section, Slider, Spacer, TabView, Text, TextField,
+  Toggle, VStack, ZStack.
   Add it to the when() in aui/runtime/DynamicComposable.kt.
 ```
 
