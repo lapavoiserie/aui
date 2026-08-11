@@ -22,6 +22,7 @@
   - [View Builders](view-builders.md)
   - [Components](components.md)
   - [Render paths](render-paths.md)
+  - [Building on aui](layering.md)
 
 - **Reference**
   - [CLI](cli.md)

@@ -17,6 +17,19 @@ new Button("Toggle", flag.tog())
 | label | `String` | Button text |
 | stateAction | `StateAction` (optional) | Action to perform on tap |
 
+A `StateAction` is *declarative*: `count.inc()` describes a change rather than
+performing one, which is what let the transpiler turn it into Kotlin. A plain
+closure also works, hung on the view:
+
+```haxe
+new Button("Save").onTapGesture(() -> save(draft))
+```
+
+The renderer holds the live tree, so the closure stays reachable and is called
+directly. Prefer a `StateAction` where one says what you mean — it is shorter,
+and it is the only form the [decommissioned static path](../render-paths.md)
+understands. Reach for the closure when the work is not a state change.
+
 Generated Kotlin:
 
 ```kotlin

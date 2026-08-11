@@ -19,6 +19,23 @@ things that matter:
   thunks, so `n.get()` happens inside the composable that displays it. A write
   recomposes that node, not the screen.
 
+### What a write costs
+
+Not every write costs the same, and the difference is the one between a
+recomposition and a new tree.
+
+- A cell a view **displays** recomposes that view. `LiveProps` defers the value
+  into a thunk, so the read happens inside the composable showing it, and
+  Compose recomposes exactly that one.
+- A cell that decides the tree's **shape** — a `ForEach`'s list, a
+  `ConditionalView`'s condition — rebuilds the tree, because the shape changed.
+  Those reads happen while the tree is built, which is what puts them in
+  `DynamicRoot`'s scope rather than a child's.
+
+The split falls out of the deferral rather than being declared anywhere: once
+every displayed value has moved into a thunk, what is left reading during
+`body()` is precisely what shapes the tree.
+
 The cost: the renderer has a vocabulary — the `when` in `DynamicComposable.kt` —
 and a view type outside it is refused at compile time, naming the type. That
 refusal is deliberate; drawing `?Badge` on a screen was the alternative.
