@@ -30,8 +30,8 @@ class MyApp extends App {
 
 1. `@:state var count:Int = 0` is transformed by `StateMacro` into a `State<Int>` field on the App instance
 2. `State<T>` wraps a Compose `MutableState` created via `aui.state.StateBridge` (a Kotlin runtime object AUI copies into the generated project); the Haxe side only holds an opaque reference
-3. The `ComposeGenerator` macro reads state as `app.count.get()` and writes it as `app.count.set(...)` — e.g. `count.inc()` becomes `app.count.set((app.count.get() as Int) + 1)`
-4. Reads inside a `@Composable` are tracked by Compose's snapshot system, so any write — from a Compose handler or from pure Haxe logic — recomposes the UI
+3. Your `body()` reads and writes that cell as plain Haxe — `count.get()`, `count.set(...)` — and the renderer applies a declarative action the same way
+4. Those reads happen *inside* composition, so Compose's snapshot system records them through the JVM frames Haxe emits, and any write — from a Compose handler or from pure Haxe logic — recomposes what read it
 
 ## What backs it
 

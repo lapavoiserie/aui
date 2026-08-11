@@ -40,28 +40,21 @@ new TabView([
 | `"email"`, `"mail"` | Email |
 | `"phone"`, `"call"` | Phone |
 
-Generated Kotlin:
+In Compose:
 
 ```kotlin
-Scaffold(
-    bottomBar = {
-        NavigationBar {
-            NavigationBarItem(
-                selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
-                icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
-                label = { Text("Home") }
-            )
-            // ...
-        }
+Column {
+    TabRow(selectedTabIndex = selected) {
+        Tab(selected = 0 == selected, onClick = { /* select */ }, text = { Text("Home") })
+        // one per tab
     }
-) { innerPadding ->
-    when (selectedTab) {
-        0 -> { /* Home content */ }
-        1 -> { /* Settings content */ }
-    }
+    /* the selected tab's content */
 }
 ```
+
+A `TabView` keeps its tab labels beside its contents rather than among them, so
+the source exposes them separately — the contents are the node's children, the
+labels are read by index.
 
 ## NavigationStack
 

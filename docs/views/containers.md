@@ -39,15 +39,16 @@ new ConditionalView(isLoggedIn,
 | thenView | `View` | View when true |
 | elseView | `View` (optional) | View when false |
 
-Generated Kotlin:
+The renderer never draws a condition. `aui.nui.ViewSource` reads the state and
+**expands** the node into whichever branch applies, so what reaches Compose is
+just that view — one less thing the renderer has to have a case for:
 
 ```kotlin
-if (isLoggedIn) {
-    Text("Welcome back!")
-} else {
-    Text("Please log in")
-}
+Text("Welcome back!")     // isLoggedIn is true
 ```
+
+A write to the condition changes the tree's shape, so it rebuilds; see
+[what a write costs](../render-paths.md).
 
 This is the primary way to create dynamic UI that changes based on state. See the [Todo App](examples/todo-app.md) for a practical example.
 

@@ -41,14 +41,19 @@ Text.withState("Count: {count}")
 Text.withState("Hello, {name}!")
 ```
 
-Generated Kotlin:
+The template is resolved **at runtime**, against the registry every state joins
+when it is constructed — so `{count}` finds the cell of that name and the string
+Compose receives is already complete:
 
 ```kotlin
-Text(text = "Count: $count")
-Text(text = "Hello, $name!")
+Text(text = "Count: 3")
 ```
 
-The text automatically updates when the referenced state changes.
+A name that resolves to nothing stays as written: `{cont}` on screen says the
+name is wrong, where an empty string would say nothing at all.
+
+The text follows the state it names, and a write to it recomposes that `Text`
+alone — see [what a write costs](../render-paths.md).
 
 ## Image
 

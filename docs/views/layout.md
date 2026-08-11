@@ -16,7 +16,7 @@ new VStack([
 |-----------|------|-------------|
 | content | `Array<View>` | Child views |
 
-Generated Kotlin:
+In Compose:
 
 ```kotlin
 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -103,7 +103,7 @@ new SafeArea([
 ])
 ```
 
-Generated Kotlin:
+In Compose:
 
 ```kotlin
 Column(modifier = Modifier.safeDrawingPadding()) {

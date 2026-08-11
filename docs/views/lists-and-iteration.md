@@ -15,13 +15,19 @@ new ForEach(items, function(item:String):View {
 | items | `Dynamic` | Collection to iterate (typically `State<Array<T>>`) |
 | builder | `Function` | View builder called for each item |
 
-Generated Kotlin:
+A `ForEach` is not a thing on screen: it is a loop that yields siblings. The
+source runs the builder and splices the results into the parent, so Compose sees
+them as ordinary children — there is no `ForEach` node and no case for one:
 
 ```kotlin
-items.forEachIndexed { index, item ->
-    Text(item)
+Column {
+    Text("first")     // the loop's rows, in place
+    Text("second")
 }
 ```
+
+Adding to or removing from the list changes the tree's shape, so it rebuilds;
+see [what a write costs](../render-paths.md).
 
 ## Section
 

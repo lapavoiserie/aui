@@ -48,6 +48,12 @@ class HelloWorld extends App {
 - **Modifiers** &mdash; `.font()`, `.bold()`, `.foregroundColor()`, `.padding()`
 - **Material 3** &mdash; Typography styles from `MaterialTheme.typography`
 
-## Generated Kotlin
+## What runs
 
-The macro translates this to a single `@Composable fun MainScreen()` with `Column`, `Row`, `Text`, and `Spacer` composables wrapped in `MaterialTheme { Surface { ... } }`.
+Nothing of this view is turned into Kotlin. `body()` runs on the device and
+returns a tree; `DynamicComposable.kt` walks it and builds `Column`, `Row`,
+`Text` and `Spacer` from it, inside `MaterialTheme { Surface { ... } }`.
+
+What the build *does* generate is the Android project around your app — the
+manifest, the Gradle files, a `MainActivity` that hands the app to the tree
+reader, and the renderer itself. See [Render paths](../render-paths.md).

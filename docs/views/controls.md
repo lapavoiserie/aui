@@ -30,10 +30,10 @@ directly. Prefer a `StateAction` where one says what you mean — it is shorter,
 and it is the only form the [decommissioned static path](../render-paths.md)
 understands. Reach for the closure when the work is not a state change.
 
-Generated Kotlin:
+In Compose:
 
 ```kotlin
-Button(onClick = { count++ }) {
+Button(onClick = { /* the action, applied */ }) {
     Text("Click me")
 }
 ```
