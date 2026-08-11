@@ -62,6 +62,30 @@ value class ViewNode(val handle: Any) {
 
     fun property(key: String): String = ViewNodeBridge.getProperty(handle, key)
 
+    /**
+     * A child's identity among its siblings, for Compose's `key()`.
+     *
+     * Positional unless the node carries one, which is what
+     * [nui's contract](https://lapavoiserie.github.io/nui/#/pull-mode) says
+     * identity is: `keyOf` returns null because aui's trees have no sibling
+     * keys. Compose already treats a `forEach` positionally, so for an app this
+     * changes nothing and says out loud what was implicit.
+     *
+     * It changes something for a tree that arrives as **data** and sets a
+     * `nodeId`. There, rows genuinely move, and positional matching reuses a
+     * control against a different node -- correct for text, wrong for anything
+     * being interacted with: the field someone is typing in silently becomes a
+     * different one. `wui`'s Reconciler has said this all along; this is aui
+     * paying the same advice.
+     *
+     * Never the handle: a rebuild allocates a fresh tree, so every handle
+     * changes and every child looks new.
+     */
+    fun identity(index: Int): String {
+        val nodeId = property("nodeId")
+        return if (nodeId.isEmpty()) "#$index" else nodeId
+    }
+
     val sectionHeader: String get() = ViewNodeBridge.sectionHeader(handle)
     fun tabTitle(index: Int): String = ViewNodeBridge.tabTitle(handle, index)
     val conditionValue: Boolean get() = ViewNodeBridge.conditionValue(handle)
@@ -172,18 +196,22 @@ fun DynamicRoot() {
  */
 @Composable
 private fun ColumnScope.dynamicChildren(node: ViewNode) {
-    node.children.forEach { child ->
-        if (child.viewType == "Spacer") Spacer(modifier = Modifier.weight(1f))
-        else DynamicView(child)
+    node.children.forEachIndexed { index, child ->
+        key(child.identity(index)) {
+            if (child.viewType == "Spacer") Spacer(modifier = Modifier.weight(1f))
+            else DynamicView(child)
+        }
     }
 }
 
 /** The same, sharing horizontal space. */
 @Composable
 private fun RowScope.dynamicChildren(node: ViewNode) {
-    node.children.forEach { child ->
-        if (child.viewType == "Spacer") Spacer(modifier = Modifier.weight(1f))
-        else DynamicView(child)
+    node.children.forEachIndexed { index, child ->
+        key(child.identity(index)) {
+            if (child.viewType == "Spacer") Spacer(modifier = Modifier.weight(1f))
+            else DynamicView(child)
+        }
     }
 }
 
@@ -194,7 +222,11 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
     when (node.viewType) {
         "VStack" -> Column(modifier = mod) { dynamicChildren(node) }
         "HStack" -> Row(modifier = mod) { dynamicChildren(node) }
-        "ZStack" -> Box(modifier = mod) { node.children.forEach { DynamicView(it) } }
+        "ZStack" -> Box(modifier = mod) {
+            node.children.forEachIndexed { index, child ->
+                key(child.identity(index)) { DynamicView(child) }
+            }
+        }
 
         "Text" -> Text(text = node.textContent, modifier = mod)
 
