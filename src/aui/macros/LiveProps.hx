@@ -102,7 +102,15 @@ class LiveProps {
 	/** Is this expression already a constant? Then there is nothing to defer. **/
 	static function isConstant(e:Expr):Bool {
 		return switch (e.expr) {
-			case EConst(CString(_) | CInt(_) | CFloat(_)): true;
+			// A single-quoted string is not a constant until the compiler has
+			// looked inside it: Haxe keeps `'n = ${count.get()}'` as a CString
+			// through the build pass, interpolation and all. Calling that
+			// constant deferred nothing, so the read stayed in body() -- which
+			// made the cell structural, so every write rebuilt the tree and the
+			// whole screen flickered for a label changing by one digit.
+			case EConst(CString(value, kind)):
+				kind != SingleQuotes || value.indexOf("$") < 0;
+			case EConst(CInt(_) | CFloat(_)): true;
 			case EConst(CIdent("true" | "false" | "null")): true;
 			case _: false;
 		};
@@ -115,8 +123,13 @@ class LiveProps {
 			switch (Context.follow(t)) {
 				case TInst(ref, _):
 					var cls = ref.get();
-					// Only aui's own views. Anything else is not ours to rewrite.
-					if (cls.pack.join(".") != "aui.ui") return null;
+					// An aui view, or something that extends one. Restricting this
+					// to the `aui.ui` package meant a framework layered on top got
+					// no deferral: `mui.ui.Toggle` is an `aui.ui.Toggle` without
+					// being in that package, so its values stayed computed during
+					// body() -- which makes the cell structural, and every write
+					// rebuilds the tree.
+					if (!isAuiView(cls)) return null;
 					var ctor = cls.constructor;
 					if (ctor == null) return null;
 					switch (Context.follow(ctor.get().type)) {
@@ -128,6 +141,16 @@ class LiveProps {
 		} catch (_:Dynamic) {
 			return null;
 		}
+	}
+
+	/** A view aui ships, or a subclass of one. **/
+	static function isAuiView(cls:haxe.macro.Type.ClassType):Bool {
+		var current = cls;
+		while (current != null) {
+			if (current.pack.join(".") == "aui.ui") return true;
+			current = current.superClass == null ? null : current.superClass.t.get();
+		}
+		return false;
 	}
 
 	static function rewrite(e:Expr):Expr {
