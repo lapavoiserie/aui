@@ -153,18 +153,53 @@ class LiveProps {
 		return false;
 	}
 
-	static function rewrite(e:Expr):Expr {
+	/**
+		Wrap every construction. Decide nothing.
+
+		This runs inside `@:build`, and that is the whole reason it decides
+		nothing: resolving a view's type here types `aui.View`, whose
+		`modifierChain.push` needs `Array` -- and on the **jvm** target the java
+		externs are not registered yet, so `java.NativeArray has no field
+		length` comes back from a standard library file naming none of our code.
+		The build fails, and nothing in the message points here.
+
+		`aui.ui.Text` resolves perfectly a moment later, while `body()` itself is
+		being typed. So the decision moves there: each `new` is wrapped in a call
+		to `live`, which is an expression macro and therefore expands at exactly
+		that later moment.
+
+		Anything that is not a view is wrapped too, and `live` hands it straight
+		back. Judging here would mean resolving the type here, which is the one
+		thing this pass exists to avoid.
+	**/
+	static function wrap(e:Expr):Expr {
+		var mapped = e.map(wrap);
+		return switch (mapped.expr) {
+			case ENew(_, args) if (args.length > 0):
+				macro @:pos(e.pos) aui.macros.LiveProps.live($mapped);
+			case _:
+				mapped;
+		};
+	}
+
+	/**
+		Decide, now that the types can be asked for.
+
+		The arguments arrive already wrapped -- `wrap` walks children first --
+		so this looks at one construction and never recurses.
+	**/
+	static function deferOne(e:Expr):Expr {
 		return switch (e.expr) {
 			case ENew(tp, args) if (args.length > 0):
 				var types = ctorArgTypes(tp, e.pos);
 				if (types == null || types.length < args.length) {
-					e.map(rewrite);
+					e;
 				} else {
 					// A container keeps its identity: never re-run its constructor.
 					var container = false;
 					for (t in types) if (isViewish(t)) container = true;
 					if (container) {
-						e.map(rewrite);
+						e;
 					} else {
 						var neutral = [];
 						var deferred = false;
@@ -177,7 +212,7 @@ class LiveProps {
 							}
 						}
 						if (!deferred) {
-							e.map(rewrite);
+							e;
 						} else {
 							var placeholder = {expr: ENew(tp, neutral), pos: e.pos};
 							macro @:pos(e.pos) {
@@ -189,7 +224,7 @@ class LiveProps {
 					}
 				}
 			case _:
-				e.map(rewrite);
+				e;
 		};
 	}
 
@@ -203,7 +238,7 @@ class LiveProps {
 			switch (field.kind) {
 				case FFun(fn) if (fn.expr != null):
 					if (field.name != "body" && !returnsView(fn.ret)) continue;
-					fn.expr = rewrite(fn.expr);
+					fn.expr = wrap(fn.expr);
 				case _:
 			}
 		}
@@ -217,4 +252,21 @@ class LiveProps {
 		};
 	}
 	#end
+
+	/**
+		One construction, judged at the moment it is typed.
+
+		Declared outside the `#if macro` block on purpose: the call `wrap`
+		emitted lives in ordinary application code, so the compiler has to find
+		this field while typing that code. A macro function's *body* is only
+		ever compiled in macro context, which is why it may call the helpers
+		above.
+
+		This is the second half of the split described on `wrap`. Everything it
+		does used to happen during `@:build`, where asking for a view's type
+		brought the java standard library down with it.
+	**/
+	public static macro function live(e:haxe.macro.Expr):haxe.macro.Expr {
+		return deferOne(e);
+	}
 }
