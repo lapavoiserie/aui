@@ -60,12 +60,34 @@ class Build {
 		return {appName: "HaxeApp", packageName: "com.haxe.app"};
 	}
 
+	/**
+		The build file to compile: this backend's own, or the generic one.
+
+		Compiling `build.hxml` unconditionally is right for a project targeting
+		one backend, and quietly wrong for one targeting several. In `mui`'s
+		kitchen sink `build.hxml` is the **sui** build -- so `aui build` compiled
+		C++ for Apple, packaged the jar already sitting in `build/`, and reported
+		success, while the aui target had not compiled at all. Nothing said so,
+		because nothing had looked.
+
+		A backend now prefers the file named after it. The generic name still
+		works, and is what a single-target project keeps.
+	**/
+	static function buildFile():Null<String> {
+		for (name in ["build-aui.hxml", "build.hxml"]) {
+			if (FileSystem.exists(cwd + "/" + name)) return name;
+		}
+		return null;
+	}
+
 	static function runHaxe():Bool {
-		if (!FileSystem.exists(cwd + "/build.hxml")) {
-			Sys.println("Error: build.hxml not found");
+		var file = buildFile();
+		if (file == null) {
+			Sys.println("Error: no build file. Looked for build-aui.hxml, then build.hxml.");
 			return false;
 		}
-		return shell("cd " + shellEscape(cwd) + " && haxe build.hxml") == 0;
+		Sys.println('Compiling $file');
+		return shell("cd " + shellEscape(cwd) + " && haxe " + shellEscape(file)) == 0;
 	}
 
 	static function ensureGradleWrapper():Void {
