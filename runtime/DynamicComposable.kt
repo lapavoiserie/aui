@@ -7,6 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
@@ -107,6 +109,8 @@ value class ViewNode(val handle: Any) {
     fun modifierType(index: Int): String = ViewNodeBridge.modifierType(handle, index)
     fun modifierFloat(index: Int, param: Int = 0): Double =
         ViewNodeBridge.modifierFloat(handle, index, param)
+    fun modifierString(index: Int, param: Int = 0): String =
+        ViewNodeBridge.modifierString(handle, index, param)
 
     /**
      * Whether a modifier parameter was actually given.
@@ -228,7 +232,12 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             }
         }
 
-        "Text" -> Text(text = node.textContent, modifier = mod)
+        "Text" -> Text(
+            text = node.textContent,
+            modifier = mod,
+            style = typographyOf(node) ?: LocalTextStyle.current,
+            fontWeight = if (isBold(node)) FontWeight.Bold else null,
+        )
 
         "Button" -> {
             val handle = node.handle
@@ -387,6 +396,66 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The typography step a node asked for, or null for the ambient one.
+ *
+ * ## Why this is not in `applyModifiers`
+ *
+ * Because in Compose typography is **not a Modifier**. A size, a padding and an
+ * alpha are things done to a box; a type scale is a parameter of `Text` itself,
+ * and there is no `Modifier.textStyle()` to reach for. Font arrived in the
+ * modifier chain because that is where Haxe carries it -- `View.font(style)` --
+ * and it fell through `applyModifiers`'s `else` branch, silently: a heading was
+ * described, crossed the bridge intact, and was drawn at body size.
+ *
+ * So the chain is read here instead, where a style can actually be applied.
+ *
+ * ## Why the names map one to one
+ *
+ * `aui.modifiers.FontStyle` **is** Material's scale -- Display, Headline,
+ * Title, Body, Label, each in three sizes. Nothing is being translated; the
+ * enum is being spelled the way Compose spells it. `mui.ui.TextScale` sits a
+ * layer above and picks four of these, which is a separate decision made where
+ * four platforms have to agree.
+ *
+ * `CustomFont` is not here: it carries a name and a size rather than a step,
+ * and answering it means building a TextStyle rather than choosing one.
+ */
+@Composable
+fun typographyOf(node: ViewNode): TextStyle? {
+    for (i in 0 until node.modifierCount) {
+        if (node.modifierType(i) != "Font") continue
+        val scale = MaterialTheme.typography
+        return when (node.modifierString(i)) {
+            "DisplayLarge" -> scale.displayLarge
+            "DisplayMedium" -> scale.displayMedium
+            "DisplaySmall" -> scale.displaySmall
+            "HeadlineLarge" -> scale.headlineLarge
+            "HeadlineMedium" -> scale.headlineMedium
+            "HeadlineSmall" -> scale.headlineSmall
+            "TitleLarge" -> scale.titleLarge
+            "TitleMedium" -> scale.titleMedium
+            "TitleSmall" -> scale.titleSmall
+            "BodyLarge" -> scale.bodyLarge
+            "BodyMedium" -> scale.bodyMedium
+            "BodySmall" -> scale.bodySmall
+            "LabelLarge" -> scale.labelLarge
+            "LabelMedium" -> scale.labelMedium
+            "LabelSmall" -> scale.labelSmall
+            else -> null
+        }
+    }
+    return null
+}
+
+/** Whether the chain asked for bold. A weight is a `Text` parameter too. */
+fun isBold(node: ViewNode): Boolean {
+    for (i in 0 until node.modifierCount) {
+        if (node.modifierType(i) == "Bold") return true
+    }
+    return false
+}
+
 /** Apply the Haxe modifier chain, in order. */
 @Composable
 fun applyModifiers(node: ViewNode, base: Modifier): Modifier {
@@ -407,6 +476,10 @@ fun applyModifiers(node: ViewNode, base: Modifier): Modifier {
             "FillMaxHeight" -> mod.fillMaxHeight()
             "FillMaxSize" -> mod.fillMaxSize()
 
+            // Font and Bold are absent on purpose: in Compose neither is a
+            // Modifier. Both are parameters of `Text`, and both are read by
+            // `typographyOf` and `isBold` where that parameter can be passed.
+            //
             // Everything else is left to the static path for now. Unknown is
             // not the same as none -- see aui/docs for what is covered.
             else -> mod
