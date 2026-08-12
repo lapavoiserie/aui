@@ -33,6 +33,16 @@ new Text("Hello")
 |----------|-----------|----------------|
 | `.font(style)` | `FontStyle` | `style = MaterialTheme.typography.*` |
 | `.bold()` | | `fontWeight = FontWeight.Bold` |
+
+> **Where these two are applied.** Not in `applyModifiers`, and not because they
+> were forgotten: in Compose typography is **not** a `Modifier`. A padding and
+> an alpha are things done to a box; a type scale is a parameter of `Text`
+> itself, and there is no `Modifier.textStyle()` to reach for. `Font` and `Bold`
+> arrive in the modifier chain because that is where Haxe carries them, and the
+> dynamic renderer reads them where a style can be passed. They fell through the
+> chain's `else` branch without a word until then — a heading was described,
+> crossed the bridge intact, and was drawn at body size.
+
 | `.italic()` | | `fontStyle = FontStyle.Italic` |
 | `.multilineTextAlignment(align)` | `TextAlignment` | `textAlign = TextAlign.*` |
 

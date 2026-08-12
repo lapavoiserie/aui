@@ -19,6 +19,16 @@ things that matter:
   thunks, so `n.get()` happens inside the composable that displays it. A write
   recomposes that node, not the screen.
 
+`LiveProps` runs in two halves, and the split is not cosmetic. The build macro
+only **wraps** each `new` in a call to `live`; `live` is an expression macro, so
+it expands while `body()` is being typed, and that is where the constructor's
+parameter types are read. Resolving them inside `@:build` types `aui.View`,
+whose `modifierChain.push` needs `Array` -- and on the **jvm** target the java
+externs are not registered at that point. What came back was
+`java.NativeArray has no field length`, from a standard library file naming none
+of our code, and the aui target did not compile at all until the decision moved
+later.
+
 ### What a write costs
 
 Not every write costs the same, and the difference is the one between a

@@ -24,6 +24,14 @@ AUI includes a command-line tool for building and running apps.
 
 `aui build` runs three stages:
 
+> **Which build file.** The tool reads `build-aui.hxml` if it is there, and
+> `build.hxml` otherwise, and prints the one it compiled. A single-target
+> project keeps the generic name; a project targeting several backends gives
+> each its own, because that name can only belong to one of them -- and the
+> tools that read it unconditionally compiled another backend's target,
+> packaged whatever artefact was already lying about, and reported success.
+
+
 1. **Haxe compilation** &mdash; Runs `haxe build.hxml`, which triggers the ComposeGenerator macro (generates `.kt` files) and the JVM target (generates `.jar`)
 2. **Gradle wrapper** &mdash; Auto-detects a cached Gradle installation and bootstraps the wrapper if needed
 3. **Gradle build** &mdash; Runs `./gradlew assembleDebug` (or `assembleRelease`)
