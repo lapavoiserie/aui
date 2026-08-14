@@ -1,0 +1,15 @@
+# What `mui init` writes as `build-aui.hxml`.
+#
+# It lives here rather than in `mui` because what a build for this backend needs
+# -- which libraries, which generator macro, which output -- is ours to state,
+# and `mui` had no way of keeping six of these honest. `$MAIN` is the only thing
+# substituted.
+-cp src
+-lib mui
+-lib aui
+-D mui_backend=aui
+-D jvm
+--jvm build/app-logic.jar
+--macro aui.macros.ComposeGenerator.register()
+--macro mui.macros.Bind.all()
+--main $MAIN
