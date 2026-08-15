@@ -1,7 +1,7 @@
 # Building on aui
 
 `aui` is usually the top of the stack: your `App`, its `body()`, its views.
-Sometimes something sits between — `mui` declares its own `App` and its own view
+Sometimes something sits between — `mui`'s `App` and its view
 types so one source can target four backends, and anyone writing a design system
 over `aui` ends up in the same place.
 
