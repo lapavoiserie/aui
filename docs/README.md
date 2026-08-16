@@ -68,3 +68,18 @@ class MyApp extends App {
 ```
 
 This generates a native Android app with a reactive counter that updates in real time.
+
+## Native capabilities
+
+Android APIs beyond the view vocabulary live in
+[`kui`](https://lapavoiserie.github.io/kui/), keyed by operating system.
+
+`aui` compiles Haxe to a JVM jar and **Gradle** performs every link there is, so
+a capability reaching Android through `aui` carries a `gradle` payload: Kotlin
+sources, Maven coordinates, manifest permissions. `GradleProject` renders them
+into `build.gradle.kts` and `AndroidManifest.xml`, and the Kotlin is compiled
+**where it lives** — added as a source directory rather than copied, so a
+capability shipped as a haxelib needs no unpacking.
+
+`pui` reaches the same platform through hxcpp and the NDK and declares different
+toolchains. Same operating system, two link stories.
