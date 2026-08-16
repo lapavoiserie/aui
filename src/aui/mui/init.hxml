@@ -12,4 +12,5 @@
 --jvm build/app-logic.jar
 --macro aui.macros.ComposeGenerator.register()
 --macro mui.macros.Bind.all()
+--macro aui.kui.Platform.registerWithKui()
 --main $MAIN

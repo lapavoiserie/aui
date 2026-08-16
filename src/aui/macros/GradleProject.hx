@@ -5,6 +5,8 @@ import sys.FileSystem;
 import sys.io.File;
 import aui.macros.AndroidPackagingConfig;
 
+using StringTools;
+
 class GradleProject {
 	public static function generate(config:{
 		appName:String,
@@ -144,6 +146,7 @@ class GradleProject {
 			"    buildFeatures {",
 			"        compose = true",
 			"    }",
+		]).concat(kuiSourceSets()).concat([
 			"}",
 			"",
 			"dependencies {",
@@ -159,12 +162,84 @@ class GradleProject {
 			"",
 			"    // Haxe JVM output",
 			'    implementation(files("../../build/app-logic.jar"))',
+		]).concat(kuiDependencies()).concat([
 			"",
 			'    debugImplementation("androidx.compose.ui:ui-tooling")',
 			"}",
 			""
 		]);
 		File.saveContent(dir + "/build.gradle.kts", lines.join("\n"));
+	}
+
+	/**
+		The Kotlin a `kui` capability carries, compiled where it lives.
+
+		Declared as `gradle: {sources: [...]}`, which `kui` has already resolved to
+		absolute paths against the library root — so a capability shipped as a
+		haxelib works without being copied into the project, which is the whole
+		reason those paths are not relative to the working directory.
+
+		Added as **source directories** rather than copied in. Copying would need a
+		staleness rule of its own, and would put a second copy of someone else's
+		Kotlin in a generated tree this file overwrites on every build. `srcDirs`
+		leaves the file where its author maintains it.
+
+		`java.srcDirs` and not `kotlin.srcDirs`: the Kotlin Android plugin compiles
+		`.kt` found in the Java source sets, and that spelling has been stable across
+		AGP versions where the `kotlin` accessor has not.
+	**/
+	static function kuiSourceSets():Array<String> {
+		var directories = [];
+		for (file in kui.macros.Emit.current().strings("gradle", "sources")) {
+			var directory = haxe.io.Path.directory(file.replace("\\", "/"));
+			if (directory != "" && directories.indexOf(directory) < 0) directories.push(directory);
+		}
+		if (directories.length == 0) return [];
+
+		return [
+			"",
+			"    // Kotlin carried by kui capabilities, compiled where it lives",
+			"    sourceSets {",
+			'        getByName("main") {',
+			"            java.srcDirs(" + [for (d in directories) '"' + d + '"'].join(", ") + ")",
+			"        }",
+			"    }",
+		];
+	}
+
+	/** Maven coordinates a `kui` capability asked for, one `implementation` each. **/
+	static function kuiDependencies():Array<String> {
+		var coordinates = kui.macros.Emit.current().strings("gradle", "dependencies");
+		if (coordinates.length == 0) return [];
+
+		var lines = ["", "    // Asked for by kui capabilities"];
+		for (coordinate in coordinates) lines.push('    implementation("' + coordinate + '")');
+		return lines;
+	}
+
+	/**
+		The permissions a `kui` capability needs, in the manifest.
+
+		A capability that reads the battery, the camera or the location cannot ask
+		for its own permission at runtime if the manifest never declared it — the
+		request is refused before the user sees it. So the declaration travels with
+		the capability rather than being something an application is expected to
+		remember to add, and forgetting it becomes impossible rather than merely
+		documented.
+
+		The application's own `<uses-permission>` entries are not touched: this file
+		does not write any, and one an author added by hand is in a manifest this
+		generator overwrites — a known limitation of the generated tree, not
+		something `kui` introduces.
+	**/
+	static function kuiPermissions():Array<String> {
+		var names = kui.macros.Emit.current().strings("gradle", "permissions");
+		if (names.length == 0) return [];
+
+		var lines = ["    <!-- Needed by kui capabilities -->"];
+		for (name in names) lines.push('    <uses-permission android:name="' + name + '" />');
+		lines.push("");
+		return lines;
 	}
 
 	static function generateManifest(srcDir:String, config:{
@@ -191,8 +266,9 @@ class GradleProject {
 			'<?xml version="1.0" encoding="utf-8"?>',
 			'<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
 			"",
+		].concat(kuiPermissions()).concat([
 			"    <application",
-		].concat(applicationAttrs).concat([
+		]).concat(applicationAttrs).concat([
 			"        <activity",
 			'            android:name="' + config.packageName + '.MainActivity"',
 			'            android:exported="true"',
