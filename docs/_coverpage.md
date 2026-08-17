@@ -9,5 +9,5 @@
 - Tab and stack navigation
 - Working CLI: `aui build`, `aui run`
 
-[GitHub](https://github.com/Pign/aui)
+[GitHub](https://github.com/lapavoiserie/aui)
 [Get Started](getting-started.md)

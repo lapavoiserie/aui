@@ -14,7 +14,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/Pign/aui.git
+git clone https://github.com/lapavoiserie/aui.git
 
 # Install hxjava if not already installed
 haxelib install hxjava

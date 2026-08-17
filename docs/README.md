@@ -2,7 +2,7 @@
 
 AUI is a framework for building **native Android apps in Haxe**. Your views are drawn by Jetpack Compose, producing genuine native Android applications with Material Design 3.
 
-AUI is the Android counterpart of [SUI](https://github.com/Pign/sui), which targets Apple platforms (macOS, iOS, visionOS).
+AUI is the Android counterpart of [SUI](https://github.com/lapavoiserie/sui), which targets Apple platforms (macOS, iOS, visionOS).
 
 ## How it works
 
