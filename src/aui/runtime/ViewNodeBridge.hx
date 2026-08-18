@@ -50,6 +50,25 @@ class ViewNodeBridge {
 		rebuild();
 	}
 
+	static var _pumpBroken = false;
+
+	/** Let Haxe's scheduled work run — called from the host's 100ms beat.
+		A `haxe.Timer` on the JVM registers with the current thread's event
+		loop, and Android's UI thread has a Looper, not a Haxe loop: without
+		this an application's timer never fires, silently. Kotlin calls it;
+		nothing in Haxe does. **/
+	public static function pumpHaxeEvents():Void {
+		if (_pumpBroken) return;
+		try {
+			#if (target.threaded && !cppia)
+			sys.thread.Thread.current().events.progress();
+			#end
+		} catch (e:Dynamic) {
+			_pumpBroken = true;
+			trace("[aui] no Haxe event loop on this thread; haxe.Timer will not fire: " + e);
+		}
+	}
+
 	/** Re-evaluate the tree by re-running the app's `body()`. **/
 	public static function rebuild():Void {
 		if (_app == null) return;

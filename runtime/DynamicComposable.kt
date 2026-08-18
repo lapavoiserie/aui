@@ -151,6 +151,18 @@ object DynamicHost {
 /** Root composable for the dynamic path: rebuilds the tree, then draws it. */
 @Composable
 fun DynamicRoot() {
+    // Let Haxe's own scheduled work run. A haxe.Timer registers with the
+    // current thread's event loop on a threaded target -- the JVM included --
+    // and nothing on Android ever advances it: the UI thread has a Looper,
+    // not a Haxe loop. Without this beat a timer an application creates never
+    // fires, silently. Same defect, same 100ms cadence as sui's poll.
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(100)
+            aui.runtime.ViewNodeBridge.pumpHaxeEvents()
+        }
+    }
+
     // Build the tree **inside** composition, deliberately, and not in a
     // `remember`.
     //
