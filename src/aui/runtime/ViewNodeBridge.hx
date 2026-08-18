@@ -58,6 +58,9 @@ class ViewNodeBridge {
 		_source = new ViewSource(_root);
 		// Force the lazy parts inside this scope: see ViewSource.classify.
 		_source.classify();
+		// After classify: that is where the lazy parts were forced, so it is
+		// where a component has finished declaring.
+		_app.lifetime.endPass();
 	}
 
 	/**
