@@ -104,12 +104,26 @@ class StateMacro {
 					hasConstructor = true;
 					switch (field.kind) {
 						case FFun(f):
-							var existingBody = f.expr;
-							var initBlock:Array<Expr> = stateInits.copy();
-							if (existingBody != null) {
-								initBlock.push(existingBody);
+							// The inits go AFTER super(), never before. Writing
+							// `this.x = ...` before super() is legal Haxe for own
+							// fields, but the JVM forbids touching `this` before
+							// the superclass constructor - and the JVM backend
+							// then quietly demotes new() to an ordinary method
+							// with no real <init>, so Kotlin's `NetworkApp()`
+							// fails to resolve a constructor that Haxe swears
+							// exists. Found through javap, not through any error.
+							var statements = switch (f.expr) {
+								case null: [];
+								case {expr: EBlock(b)}: b.copy();
+								case e: [e];
 							}
-							f.expr = macro $b{initBlock};
+							var isSuper = statements.length > 0 && switch (statements[0].expr) {
+								case ECall({expr: EConst(CIdent("super"))}, _): true;
+								case _: false;
+							}
+							f.expr = isSuper
+								? macro $b{[statements[0]].concat(stateInits).concat(statements.slice(1))}
+								: macro $b{stateInits.concat(statements)};
 						default:
 					}
 					break;
