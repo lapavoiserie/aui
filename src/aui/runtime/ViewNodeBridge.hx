@@ -53,6 +53,7 @@ class ViewNodeBridge {
 	/** Re-evaluate the tree by re-running the app's `body()`. **/
 	public static function rebuild():Void {
 		if (_app == null) return;
+		_app.lifetime.beginPass();
 		_root = _app.body();
 		_source = new ViewSource(_root);
 		// Force the lazy parts inside this scope: see ViewSource.classify.
