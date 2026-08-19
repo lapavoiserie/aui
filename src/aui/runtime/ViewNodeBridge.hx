@@ -35,19 +35,35 @@ import aui.nui.ViewSource;
 
 	A node crosses as `Dynamic` — `java.lang.Object` on the JVM — so Kotlin holds
 	it as `Any` and hands it back without knowing anything about `aui.View`. The
-	tree stays reachable from `_root` here, so the garbage collector can see
-	every node Kotlin is holding.
+	tree stays reachable from the Primary `ViewRoot` here, so the garbage
+	collector can see every node Kotlin is holding.
+
+	## One bridge, N roots
+
+	The per-root state — the app, its last tree, its source — lives in
+	`ViewRoot`; these statics route to the Primary one. The node accessors
+	below take the node they are asked about and the source's caches are keyed
+	by node, so they are root-agnostic: a second root shares them unchanged
+	and only needs its own `ViewRoot` for "rebuild" and "which root".
 **/
 @:keep
 class ViewNodeBridge {
-	static var _app:Dynamic = null;
-	static var _root:View = null;
-	static var _source:ViewSource = null;
+	static var _primary:Null<ViewRoot> = null;
+
+	// Kotlin may ask before setApp() has run; a reader must exist even with
+	// no root at all. Its accessors answer "" / 0 / false for a null node.
+	static var _orphan:Null<ViewSource> = null;
 
 	/** Set the app instance and build the first tree. **/
 	public static function setApp(app:Dynamic):Void {
-		_app = app;
-		rebuild();
+		_primary = new ViewRoot(app);
+		_primary.rebuild();
+	}
+
+	/** The Primary root's record, or null before setApp(). A future host
+		driving a second surface holds its own `ViewRoot` instead. **/
+	public static function primary():Null<ViewRoot> {
+		return _primary;
 	}
 
 	static var _pumpBroken = false;
@@ -69,17 +85,9 @@ class ViewNodeBridge {
 		}
 	}
 
-	/** Re-evaluate the tree by re-running the app's `body()`. **/
+	/** Re-evaluate the Primary tree by re-running the app's `body()`. **/
 	public static function rebuild():Void {
-		if (_app == null) return;
-		_app.lifetime.beginPass();
-		_root = _app.body();
-		_source = new ViewSource(_root);
-		// Force the lazy parts inside this scope: see ViewSource.classify.
-		_source.classify();
-		// After classify: that is where the lazy parts were forced, so it is
-		// where a component has finished declaring.
-		_app.lifetime.endPass();
+		if (_primary != null) _primary.rebuild();
 	}
 
 	/**
@@ -94,17 +102,18 @@ class ViewNodeBridge {
 
 	// --- Accessors called from Kotlin -------------------------------------
 	//
-	// All forward to the ViewSource. Kotlin may ask before setApp() has run, so
-	// a reader always exists: its accessors already answer "" / 0 / false for a
-	// null node.
+	// All forward to a ViewSource. They take the node they are asked about,
+	// so they serve any root's nodes; the Primary's source is preferred for
+	// its caches and classify attribution.
 
 	static function reader():ViewSource {
-		if (_source == null) _source = new ViewSource(null);
-		return _source;
+		if (_primary != null) return _primary.source;
+		if (_orphan == null) _orphan = new ViewSource(null);
+		return _orphan;
 	}
 
 	public static function getRoot():Dynamic {
-		return _root;
+		return _primary == null ? null : _primary.rootHandle();
 	}
 
 	public static function getType(node:Dynamic):String {

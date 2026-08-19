@@ -129,7 +129,7 @@ value class ViewNode(val handle: Any) {
  */
 object DynamicHost {
     /**
-     * Which tab is showing.
+     * Which tab each TabView is showing, keyed by the node's structural path.
      *
      * Held here rather than in a `remember` inside the TabView branch: the tree
      * is rebuilt from Haxe on every recomposition, so a slot inside a recursive
@@ -137,14 +137,21 @@ object DynamicHost {
      * recomposition the click itself caused, and the tab appeared not to
      * respond at all.
      *
-     * One index, so one TabView at a time. aui apps root a single one; the day
-     * that stops being true this becomes a map keyed by something stable across
-     * rebuilds, which a node handle is not.
+     * Keyed by path, not by handle and not one global: a rebuild allocates a
+     * fresh tree so every handle changes, while the structural path -- the
+     * same identity() chain the tree keys use -- survives rebuilds. The single
+     * global index this used to be meant one TabView per process, the exact
+     * shape the surfaces work is removing; per path, every TabView owns its
+     * selection, and a second root's paths are disjoint by its root prefix.
+     * A path that was never selected reads as 0, which is what the global
+     * answered too.
      */
-    var tabIndex by mutableIntStateOf(0)
+    private val tabSelections = mutableStateMapOf<String, Int>()
 
-    fun selectTab(index: Int) {
-        tabIndex = index
+    fun tabIndex(path: String): Int = tabSelections[path] ?: 0
+
+    fun selectTab(path: String, index: Int) {
+        tabSelections[path] = index
     }
 }
 
@@ -209,38 +216,44 @@ fun DynamicRoot() {
  * share out its leftover space. The previous version called it on a bare
  * `Modifier`, which does not compile; nothing noticed, because nothing ever
  * compiled this file.
+ *
+ * `path` is the parent's structural path; each child extends it with its own
+ * identity -- the same identity the `key()` uses -- so renderer-owned state
+ * (a TabView's selection) has a home that survives rebuilds.
  */
 @Composable
-private fun ColumnScope.dynamicChildren(node: ViewNode) {
+private fun ColumnScope.dynamicChildren(node: ViewNode, path: String) {
     node.children.forEachIndexed { index, child ->
         key(child.identity(index)) {
             if (child.viewType == "Spacer") Spacer(modifier = Modifier.weight(1f))
-            else DynamicView(child)
+            else DynamicView(child, path = "$path/${child.identity(index)}")
         }
     }
 }
 
 /** The same, sharing horizontal space. */
 @Composable
-private fun RowScope.dynamicChildren(node: ViewNode) {
+private fun RowScope.dynamicChildren(node: ViewNode, path: String) {
     node.children.forEachIndexed { index, child ->
         key(child.identity(index)) {
             if (child.viewType == "Spacer") Spacer(modifier = Modifier.weight(1f))
-            else DynamicView(child)
+            else DynamicView(child, path = "$path/${child.identity(index)}")
         }
     }
 }
 
 @Composable
-fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
+fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = "") {
     val mod = applyModifiers(node, modifier)
 
     when (node.viewType) {
-        "VStack" -> Column(modifier = mod) { dynamicChildren(node) }
-        "HStack" -> Row(modifier = mod) { dynamicChildren(node) }
+        "VStack" -> Column(modifier = mod) { dynamicChildren(node, path) }
+        "HStack" -> Row(modifier = mod) { dynamicChildren(node, path) }
         "ZStack" -> Box(modifier = mod) {
             node.children.forEachIndexed { index, child ->
-                key(child.identity(index)) { DynamicView(child) }
+                key(child.identity(index)) {
+                    DynamicView(child, path = "$path/${child.identity(index)}")
+                }
             }
         }
 
@@ -274,7 +287,7 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
 
         // A card is a surface around its children; nothing more is claimed.
         "Card" -> Card(modifier = mod) {
-            Column(modifier = Modifier.padding(16.dp)) { dynamicChildren(node) }
+            Column(modifier = Modifier.padding(16.dp)) { dynamicChildren(node, path) }
         }
 
         // A section is its children under a header. An empty header draws no
@@ -288,7 +301,7 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             }
-            dynamicChildren(node)
+            dynamicChildren(node, path)
         }
 
         // The source reports the live branch as child 0 and the other as child
@@ -297,7 +310,10 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
         "ConditionalView" -> {
             val index = if (node.conditionValue) 0 else 1
             if (index < node.childCount) {
-                DynamicView(node.child(index), mod)
+                // The branch index is part of the path: the then- and
+                // else-trees are different places, and state kept under one
+                // must not leak into the other when the condition flips.
+                DynamicView(node.child(index), mod, path = "$path/$index")
             }
         }
 
@@ -306,19 +322,23 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
         // reports each tab's *content* as a child.
         "TabView" -> {
             val count = node.childCount
-            val selected = DynamicHost.tabIndex
+            val selected = DynamicHost.tabIndex(path)
             Column(modifier = mod) {
                 if (count > 0) {
                     TabRow(selectedTabIndex = selected.coerceIn(0, count - 1)) {
                         for (i in 0 until count) {
                             androidx.compose.material3.Tab(
                                 selected = i == selected,
-                                onClick = { DynamicHost.selectTab(i) },
+                                onClick = { DynamicHost.selectTab(path, i) },
                                 text = { Text(node.tabTitle(i)) }
                             )
                         }
                     }
-                    DynamicView(node.child(selected.coerceIn(0, count - 1)))
+                    // The tab index joins the path: each page is its own
+                    // place, so a nested TabView on page 2 does not inherit
+                    // page 1's selections.
+                    val shown = selected.coerceIn(0, count - 1)
+                    DynamicView(node.child(shown), path = "$path/tab$shown")
                 }
             }
         }
@@ -381,9 +401,9 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
 
         "ScrollView" -> Column(
             modifier = mod.fillMaxSize().verticalScroll(rememberScrollState())
-        ) { dynamicChildren(node) }
+        ) { dynamicChildren(node, path) }
 
-        "SafeArea" -> Column(modifier = mod.safeDrawingPadding()) { dynamicChildren(node) }
+        "SafeArea" -> Column(modifier = mod.safeDrawingPadding()) { dynamicChildren(node, path) }
 
         else -> {
             // A type this renderer does not know.
@@ -399,7 +419,7 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier) {
             // draw nothing at all, and a blank screen is not a diagnosis.
             Column(modifier = mod) {
                 if (node.childCount > 0) {
-                    dynamicChildren(node)
+                    dynamicChildren(node, path)
                 } else {
                     Text(text = "?" + node.viewType)
                 }

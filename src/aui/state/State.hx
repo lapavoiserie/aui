@@ -17,6 +17,14 @@ class State<T> extends rui.state.State<T> {
 	// Held as Dynamic so this Haxe class doesn't import any Compose types.
 	var bridge:Dynamic;
 
+	// The remaining cross-surface global on this backend, named as such: one
+	// flat map keyed by FIELD NAME, consumed by `ViewNodeBridge.resolveTemplate`
+	// for `Text.withState("{count}")`. Two roots (or two App instances -- the
+	// rotation bug already builds a second one) declaring the same name
+	// silently repoint the entry to the newest cell. The scoped fix is shared
+	// across backends (wui carries the same map) and waits on the sui
+	// invalidation-key decision: whatever joins a surface id to a cell name
+	// there is the shape this key takes too.
 	static var _registry:Map<String, Dynamic> = new Map();
 
 	public function new(initialValue:T, name:String) {
