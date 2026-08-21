@@ -15,6 +15,10 @@ package aui.mui;
 // (`@:surface(Role, optional)`) rather than degradation it never hears about.
 // Widen this the day a host lands, never to quiet a build.
 //
+// Companion is a statement of capability, not of appetite: it says this
+// backend installs a describer and *could* serve one. The networked corner
+// stays off until the build asks for it with -D mui_cafos.
+//
 // Nothing local yet — Compose hosts no declared surface here. Companion
 // rides the describer installed below, which is served by cafos rather than
 // by this backend. Glance (the Android widget) is the next one.
