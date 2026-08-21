@@ -10,6 +10,14 @@ package aui.mui;
 **/
 @:autoBuild(mui.macros.Surfaces.build())
 class App extends aui.App {
+    public function new() {
+        super();
+        // The View->Node describer, for the detached corner (Companion
+        // projection now, widget snapshots in P4a): each backend signs the
+        // shared register at construction, the extraRootsOf layering.
+        mui.surface.Describe.impl = v -> aui.nui.Describe.describe(v);
+    }
+
     public var appTitle(get, set):String;
     function get_appTitle():String return appName;
     function set_appTitle(v:String):String { appName = v; return v; }

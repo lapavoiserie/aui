@@ -43,6 +43,27 @@ The façades are the *mapping* — which Compose widget a `mui` type becomes —
 not the renderer's coverage. A type outside the dynamic renderer's vocabulary
 refuses to compile, naming what is covered.
 
+## Surfaces: the describer
+
+aui signs `mui.surface.Describe` at construction (`aui.mui.App`), so an aui
+application can serve the **detached corner**: a `@:surface(Companion)`
+declaration projects over the network today, and a widget snapshot (P4a) will
+ship the same trees. `aui.nui.Describe` turns aui views into `nui.Node`s with
+the **canonical mui prop names** — `Text`/`text`, `Button`/`label`+`onClick`,
+`Toggle`/`isOn`+`onToggle`, `TextInput`/`text`+`placeholder`+`onText`,
+`Slider`/`value`+`min`+`max`+`onValue` — so an aui-served snapshot and a
+cui-served one look the same on the wire, and one sink renders both.
+
+Describing **samples**: every read goes through `ViewSource.resolveValue`
+first (the truth lives behind the LiveProps thunk — the constructed node
+holds neutral values), a `ConditionalView`'s condition is read live, a
+`ForEach` splices its rows (reusing `ViewSource`'s expansion, one answer not
+two), `Text.withState` templates are resolved against the state registry, and
+a `TabView` flattens to its first tab — the selection lives on the Kotlin
+side, so the Haxe tree cannot know which tab shows; said with a trace, not
+guessed. A described button's tap does exactly what the dynamic renderer's
+does: the declarative `StateAction`, else the `OnTapGesture` closure.
+
 ## See also
 
 - [Adding a backend](https://lapavoiserie.github.io/mui/#/adding-a-backend) — the
