@@ -8,6 +8,17 @@ package aui.mui;
 	which is why nothing in `mui` mentions `aui`. Moved here, unchanged, from the
 	`#if (mui_backend == "aui")` branch it used to live in.
 **/
+// The roles this backend can honour, stated where a macro can read them.
+//
+// `mui.macros.Surfaces` refuses a declaration whose role is missing from this
+// list, naming this backend — degradation the application accepts on purpose
+// (`@:surface(Role, optional)`) rather than degradation it never hears about.
+// Widen this the day a host lands, never to quiet a build.
+//
+// Nothing local yet — Compose hosts no declared surface here. Companion
+// rides the describer installed below, which is served by cafos rather than
+// by this backend. Glance (the Android widget) is the next one.
+@:hostedRoles(Companion)
 @:autoBuild(mui.macros.Surfaces.build())
 class App extends aui.App {
     public function new() {
