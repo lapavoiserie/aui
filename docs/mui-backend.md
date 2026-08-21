@@ -47,8 +47,9 @@ refuses to compile, naming what is covered.
 
 aui signs `mui.surface.Describe` at construction (`aui.mui.App`), so an aui
 application can serve the **detached corner**: a `@:surface(Companion)`
-declaration projects over the network today, and a widget snapshot (P4a) will
-ship the same trees. `aui.nui.Describe` turns aui views into `nui.Node`s with
+declaration projects over the network today — in a build that asked for it
+with `-D mui_cafos`, without which the declaration does not compile — and a
+widget snapshot (P4a) will ship the same trees. `aui.nui.Describe` turns aui views into `nui.Node`s with
 the **canonical mui prop names** — `Text`/`text`, `Button`/`label`+`onClick`,
 `Toggle`/`isOn`+`onToggle`, `TextInput`/`text`+`placeholder`+`onText`,
 `Slider`/`value`+`min`+`max`+`onValue` — so an aui-served snapshot and a
