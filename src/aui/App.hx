@@ -50,5 +50,22 @@ class App {
 	**/
 	public function onAndroidContextReady(nativeLibraryDir:String, filesDir:String, assets:Dynamic):Void {}
 
+	/**
+		Release everything this application owns.
+
+		Called from the generated Kotlin when the Activity is really going
+		away — **not** on a rotation. That distinction is the point: Android
+		destroys and recreates an Activity for a configuration change, and an
+		application that took that for death rebuilt itself on every rotation,
+		losing its state and leaving the previous instance's effects running.
+		The generated host now retains the app across configuration changes
+		and calls this only when the retention itself is cleared.
+
+		Override to add your own teardown, and call `super.release()`.
+	**/
+	public function release():Void {
+		lifetime.release();
+	}
+
 	public static function main() {}
 }

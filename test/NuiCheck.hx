@@ -250,6 +250,25 @@ class NuiCheck {
 		check("rebuild() makes the write visible", before != after, '"$before" -> "$after"');
 		check("and renders the new value", after == "counter: 7", after);
 
+		// --- release: the other half of the Android lifecycle ---
+		//
+		// Kotlin calls this from the retaining ViewModel's onCleared, and
+		// nothing in Haxe calls it, so nothing here type-checks the way it is
+		// used. The bug it closes was invisible from this side: every rotation
+		// built a second app and left the first one's effects running, with
+		// this static still pointing at whichever came last.
+		var released = false;
+		var app = new DemoApp();
+		app.lifetime.own(() -> released = true);
+		ViewNodeBridge.setApp(app);
+		ViewNodeBridge.releaseApp();
+		check("releaseApp() runs the app's undos", released);
+		check("and drops the root", ViewNodeBridge.getRoot() == null);
+		check("leaving the readers shrugging, not throwing",
+			ViewNodeBridge.getType(null) == "" && ViewNodeBridge.childCount(null) == 0);
+		ViewNodeBridge.releaseApp();
+		check("releasing twice is a no-op", true);
+
 		// --- deferred values: the grain LiveProps buys ---
 		//
 		// On the dynamic path the macro rewrites a view whose value is computed

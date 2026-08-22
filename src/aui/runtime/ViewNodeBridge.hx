@@ -60,6 +60,31 @@ class ViewNodeBridge {
 		_primary.rebuild();
 	}
 
+	/**
+		Drop the Primary root and release its application.
+
+		Called from the generated Kotlin when the retained app is cleared —
+		the Activity is finishing, not rotating. Without it the app, its
+		effects and its whole tree stayed reachable from this static for as
+		long as the process lived, and a second `setApp` merely orphaned the
+		first: the rotation bug's real cost.
+
+		Idempotent, and safe to call before any accessor: the readers already
+		answer "" / 0 / false with no root, the same shrug they give before
+		the first `setApp`.
+	**/
+	public static function releaseApp():Void {
+		var root = _primary;
+		_primary = null;
+		if (root == null) return;
+		// Typed, not `root.app.release()`: the record holds the app as
+		// `Dynamic`, and a dynamic call is a reflective one that dead-code
+		// elimination cannot see — `release()` would compile away under
+		// `-dce full` and fail at the one moment it is needed.
+		var app = Std.downcast(root.app, aui.App);
+		if (app != null) app.release();
+	}
+
 	/** The Primary root's record, or null before setApp(). A future host
 		driving a second surface holds its own `ViewRoot` instead. **/
 	public static function primary():Null<ViewRoot> {
