@@ -35,10 +35,18 @@ import nui.Snapshot.ActionTable;
 
 	The live one when the Activity is up (the retained instance, since
 	`aui.App.release`), so a widget refreshed while the app is open shows what
-	the app shows. When nothing is running, the host constructs one: the
-	widget then renders the application's initial state, honestly — persisting
-	state across process death is the application's business, not this
-	bridge's.
+	the app shows. When nothing is running, the host constructs one — and what
+	that instance is born with is now the application's own choice.
+
+	This used to say that persisting state across process death was the
+	application's business and not this bridge's. True, and useless: the
+	application had no way of doing it. `@:state(durable)` is that way. A cell
+	declared durable is constructed from the device store, so an instance built
+	here for a widget refresh starts where the last one left off instead of at
+	the application's initial state. An ordinary cell still starts at its
+	default, which stays the right answer for anything not worth keeping.
+
+	Still not this bridge's business — but no longer nobody's.
 **/
 @:keep
 class GlanceBridge {
