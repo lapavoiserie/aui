@@ -66,10 +66,19 @@ it**. Kill the app and the home screen still shows what it last showed.
 into a local value froze the widget at whatever the app held when the session
 opened. Storing the picture is both the idiomatic fix and the honest model.)
 
-A new picture is taken when the application leaves the foreground: what you
-last saw in the app is what the home screen shows. A general "resample this
-surface" call belongs in mui beside the role, and would serve WidgetKit the
-same way (`reloadTimelines`); this is the first trigger, not the last word.
+A new picture is taken at two moments. When the application leaves the
+foreground — what you last saw in the app is what the home screen shows —
+and whenever the application asks:
+
+```haxe
+mui.surface.Resample.request(Glance);
+```
+
+That is mui's own call, and aui answers it by reaching `aui.glance.GlanceHost`
+(a fixed-package Kotlin object, the `aui.state.StateBridge` arrangement) which
+the generated code registered a pusher with. On a backend hosting no Glance
+the call compiles to nothing, so an application written for four targets says
+it once and means it only where it counts.
 
 The widget's files — the receiver, its manifest entry, the provider XML, the
 Jetpack Glance dependency — are emitted **only** for an application that
@@ -112,8 +121,13 @@ Two limits worth stating rather than discovering:
 
 - **A tree whose shape changed** between the launcher's picture and the tap —
   a list one item shorter — makes the id name something else or nothing, and
-  the honest answer is the word `nui.ActionTable` already prints. Persisting
-  the table beside the picture is what would close that, and is not done.
+  the honest answer is the word `nui.ActionTable` already prints. What would
+  close that is persisting, beside the picture, the **id → place** map the
+  sample minted (`ActionTable` keys every action by `"path#prop"`), and
+  resolving a cold tap by place rather than by number: the button that did
+  not move keeps its identity even when its neighbours vanish. The table
+  itself cannot be persisted — it holds closures — and is not what would be
+  stored. Not done.
 - **With no process alive**, the sample that warms the table constructs a
   fresh application, whose state is the application's initial state. The tap
   then acts on that, not on what you last saw. Persisting state across

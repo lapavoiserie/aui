@@ -226,6 +226,14 @@ class ComposeGenerator {
 		if (declaresGlance) {
 			Context.getType("aui.mui.GlanceBridge");
 			generateGlanceWidget(packageName, appJvmName());
+			// The fixed-package seam `mui.surface.Resample` reaches through:
+			// Haxe names `aui.glance.GlanceHost`, the generated code above
+			// registers itself with it. Copied like StateBridge.kt.
+			var glanceDir = "android/app/src/main/kotlin/aui/glance";
+			ensureDir(glanceDir);
+			var host = locateAuiRuntimeFile("GlanceHost.kt");
+			if (host != null) copyIfNewer(host, glanceDir + "/GlanceHost.kt");
+			else Context.warning("[AUI] GlanceHost.kt not found in aui/runtime/ — Resample will not reach the widget", Context.currentPos());
 		}
 
 		// The static screen is what the transpiler exists for -- and on the
@@ -334,6 +342,9 @@ class ComposeGenerator {
 			"import androidx.glance.state.PreferencesGlanceStateDefinition",
 			"import androidx.glance.text.Text",
 			"import androidx.glance.text.TextStyle",
+			"import kotlinx.coroutines.CoroutineScope",
+			"import kotlinx.coroutines.Dispatchers",
+			"import kotlinx.coroutines.launch",
 			"import org.json.JSONArray",
 			"import org.json.JSONObject",
 			"",
@@ -462,6 +473,22 @@ class ComposeGenerator {
 			" * bridge's.",
 			" */",
 			"object AuiGlance {",
+			"    // The application context the push needs, and the registration",
+			"    // that lets mui.surface.Resample reach us: the seam lives in a",
+			"    // fixed package (aui.glance.GlanceHost) because Haxe has to name",
+			"    // it, while this object names the app and widget classes, which",
+			"    // vary. Called from every entry point that can start this",
+			"    // process — the Activity and the tap callback.",
+			"    private var appContext: Context? = null",
+			"",
+			"    fun register(context: Context) {",
+			"        appContext = context.applicationContext",
+			"        aui.glance.GlanceHost.pusher = aui.glance.GlanceHost.Pusher {",
+			"            val ctx = appContext ?: return@Pusher",
+			"            CoroutineScope(Dispatchers.Default).launch { push(ctx) }",
+			"        }",
+			"    }",
+			"",
 			"    /**",
 			"     * A current picture, from the best application available.",
 			"     *",
@@ -506,6 +533,7 @@ class ComposeGenerator {
 			"        parameters: ActionParameters",
 			"    ) {",
 			"        val id = parameters[ACTION_ID] ?: return",
+			"        AuiGlance.register(context)",
 			"        AuiGlance.sample()",
 			"        aui.mui.GlanceBridge.invoke(id, \"\")",
 			"        AuiGlance.push(context)",
@@ -771,6 +799,12 @@ class ComposeGenerator {
 		// of the Kotlin the generator emitted from the typed AST. Same app, same
 		// body(): what changes is who reads it, and when.
 		if (RenderPath.isDynamic()) {
+			if (hasGlance) {
+				// Registers the pusher mui.surface.Resample reaches through, and
+				// the context it needs. Before setApp, so a resample asked for
+				// while the first tree is being built already has somewhere to go.
+				lines.push("        AuiGlance.register(this)");
+			}
 			lines.push("        // Hand the app to the Haxe-side tree reader, which");
 			lines.push("        // DynamicRoot() walks through nui's pull contract.");
 			lines.push("        aui.runtime.ViewNodeBridge.setApp(app)");

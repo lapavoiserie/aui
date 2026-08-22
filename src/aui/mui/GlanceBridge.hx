@@ -118,8 +118,14 @@ class GlanceBridge {
 		It holds while the tree keeps its shape. A tree whose shape changed
 		between the launcher's picture and the tap — a list one item shorter —
 		names something else or nothing, and the honest answer is the word
-		`ActionTable` already prints. Persisting the table alongside the
-		picture is what would close that gap, and is not done.
+		`ActionTable` already prints.
+
+		What would close that is persisting the **id → place** map beside the
+		picture and resolving a cold tap by place: `ActionTable` keys every
+		action by `"path#prop"`, and a button that did not move keeps that key
+		even when its neighbours vanish. The table itself cannot be persisted
+		— it maps ids to CLOSURES — so it is the map that would be stored, not
+		the table. Not done.
 	**/
 	public static function invoke(id:Int, arg:String):Void {
 		if (_table == null) return;

@@ -30,9 +30,16 @@ class App extends aui.App {
     public function new() {
         super();
         // The View->Node describer, for the detached corner (Companion
-        // projection now, widget snapshots in P4a): each backend signs the
+        // projection and the widget snapshot alike): each backend signs the
         // shared register at construction, the extraRootsOf layering.
         mui.surface.Describe.impl = v -> aui.nui.Describe.describe(v);
+        // How this backend takes a new sample when the application asks. The
+        // widget is the only snapshot surface here, so every role but Glance
+        // is nothing to do — and `Resample.request` has already compiled the
+        // call away on a backend that hosts none at all.
+        mui.surface.Resample.impl = (role, _) -> {
+            if (role == mui.surface.SurfaceRole.Glance) aui.glance.GlanceHost.requestUpdate();
+        };
     }
 
     public var appTitle(get, set):String;
