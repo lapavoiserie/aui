@@ -60,6 +60,22 @@ class GlanceBridge {
 		return sampleOf(root.app);
 	}
 
+	/**
+		Sample the application this bridge last sampled, or `null` if it has
+		sampled none yet.
+
+		The one between `sampleLive` and `sampleOf`: the Activity is gone but
+		the process is not, so there is no live root to ask and yet there is a
+		perfectly good application holding the state the user last saw.
+		Constructing a second one instead would answer with the *initial*
+		state and quietly throw away a tap that had just landed.
+	**/
+	public static function sampleAgain():Null<String> {
+		var mine = _sampled;
+		if (mine == null) return null;
+		return sampleOf(mine);
+	}
+
 	/** Sample this application's Glance surface as snapshot JSON, or `null`
 		when it declares none. **/
 	public static function sampleOf(app:Dynamic):Null<String> {
@@ -89,6 +105,21 @@ class GlanceBridge {
 		answered with a word, never a crash, because it may legitimately name
 		a control that left the tree between the launcher's picture and the
 		user's finger.
+
+		## Sample before you invoke
+
+		The tap arrives in a process that may have started for this very
+		callback, with an empty table — the launcher kept the picture, we kept
+		nothing. Sampling first rebuilds the table, and the id still resolves,
+		because ids are keyed by PLACE: walking the same tree hands the same
+		button the same id. That is the property the first interactive
+		Companion paid for, collected here at a different distance.
+
+		It holds while the tree keeps its shape. A tree whose shape changed
+		between the launcher's picture and the tap — a list one item shorter —
+		names something else or nothing, and the honest answer is the word
+		`ActionTable` already prints. Persisting the table alongside the
+		picture is what would close that gap, and is not done.
 	**/
 	public static function invoke(id:Int, arg:String):Void {
 		if (_table == null) return;

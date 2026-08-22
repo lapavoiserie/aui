@@ -77,9 +77,48 @@ declares the surface. A build that never asked for a widget gets none, and
 `GlanceBridge` itself lives in the mui facade, so a plain aui application has
 no such thing.
 
-Buttons in a sampled tree draw their label today; the tap comes next — the
-action ids are already there, keyed by place, so a tap that arrives after a
-resample will invoke the current closure rather than a hole.
+### Tapping a widget
+
+A `Button` in a Glance surface is a real button, and its closure runs. The
+closure itself never crosses — it could not — so what the launcher holds is
+an **action id**, taken from the snapshot's `actions` map, and a tap sends
+that id back to `AuiGlanceAction` in our own process.
+
+That process may have started *for this tap*, with an empty action table: the
+launcher kept the picture, we kept nothing. So the callback **samples before
+it invokes**, which rebuilds the table — and the id still resolves, because
+ids are keyed by place: walking the same tree hands the same button the same
+id. It is the property the first interactive Companion paid for, collected
+here at a different distance. Then the action runs and a fresh picture is
+pushed, so the widget shows what the tap did.
+
+Nothing about the declaration is widget-specific:
+
+```haxe
+@:surface(Glance, optional)
+function glance():View {
+    return new VStack([
+        new Text('Count: ${count.get()}'),
+        new Button("+1", function() count.set(count.get() + 1)),
+    ], 8);
+}
+```
+
+That same declaration is a cover on Sailfish, where `qui.mui.CoverHost`
+strips the callbacks at mount because a cover only displays — degradation the
+*host* performs, which the declaration never has to know about.
+
+Two limits worth stating rather than discovering:
+
+- **A tree whose shape changed** between the launcher's picture and the tap —
+  a list one item shorter — makes the id name something else or nothing, and
+  the honest answer is the word `nui.ActionTable` already prints. Persisting
+  the table beside the picture is what would close that, and is not done.
+- **With no process alive**, the sample that warms the table constructs a
+  fresh application, whose state is the application's initial state. The tap
+  then acts on that, not on what you last saw. Persisting state across
+  process death is the application's business; the framework does not pretend
+  otherwise.
 
 ## Surfaces: the describer
 
