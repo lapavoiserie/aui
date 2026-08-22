@@ -14,7 +14,11 @@ class GradleProject {
 		minSdk:Int,
 		targetSdk:Int,
 		compileSdk:Int,
-		?android:AndroidPackagingConfig
+		?android:AndroidPackagingConfig,
+		/** The application declares a `Glance` surface, so the project needs
+			the App Widget: its Jetpack Glance dependency, its receiver in the
+			manifest, and the provider XML the receiver points at. **/
+		?glanceWidget:Bool
 	}):Void {
 		var androidDir = "android";
 		var appDir = androidDir + "/app";
@@ -81,7 +85,11 @@ class GradleProject {
 		minSdk:Int,
 		targetSdk:Int,
 		compileSdk:Int,
-		?android:AndroidPackagingConfig
+		?android:AndroidPackagingConfig,
+		/** The application declares a `Glance` surface, so the project needs
+			the App Widget: its Jetpack Glance dependency, its receiver in the
+			manifest, and the provider XML the receiver points at. **/
+		?glanceWidget:Bool
 	}):Void {
 		// Optional ndk { abiFilters += listOf(...) } block, injected only when configured.
 		var defaultConfigExtras:Array<String> = [];
@@ -159,6 +167,15 @@ class GradleProject {
 			'    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")',
 			'    implementation("androidx.navigation:navigation-compose:2.8.5")',
 			'    implementation("androidx.compose.foundation:foundation")',
+		]).concat(config.glanceWidget == true ? [
+			"",
+			"    // The App Widget that draws @:surface(Glance). Only for an",
+			"    // application that declares one: a widget nothing fills is a",
+			"    // blank rectangle on someone's home screen.",
+			'    implementation("androidx.glance:glance-appwidget:1.1.1")',
+			"    // lifecycleScope, for the Activity to ask for a new sample as it leaves.",
+			'    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")',
+		] : []).concat([
 			"",
 			"    // Haxe JVM output",
 			'    implementation(files("../../build/app-logic.jar"))',
@@ -248,7 +265,11 @@ class GradleProject {
 		minSdk:Int,
 		targetSdk:Int,
 		compileSdk:Int,
-		?android:AndroidPackagingConfig
+		?android:AndroidPackagingConfig,
+		/** The application declares a `Glance` surface, so the project needs
+			the App Widget: its Jetpack Glance dependency, its receiver in the
+			manifest, and the provider XML the receiver points at. **/
+		?glanceWidget:Bool
 	}):Void {
 		var safeName = sanitizeName(config.appName);
 		// Optional android:extractNativeLibs attribute.
@@ -278,12 +299,55 @@ class GradleProject {
 			'                <category android:name="android.intent.category.LAUNCHER" />',
 			"            </intent-filter>",
 			"        </activity>",
+		]).concat(config.glanceWidget == true ? [
+			"",
+			"        <!-- The App Widget drawing @:surface(Glance). exported, because",
+			"             the launcher is another application and must be able to",
+			"             bind it; it carries no data of its own. -->",
+			"        <receiver",
+			'            android:name="' + config.packageName + '.AuiGlanceReceiver"',
+			'            android:exported="true">',
+			"            <intent-filter>",
+			'                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />',
+			"            </intent-filter>",
+			"            <meta-data",
+			'                android:name="android.appwidget.provider"',
+			'                android:resource="@xml/aui_glance_widget_info" />',
+			"        </receiver>",
+		] : []).concat([
 			"    </application>",
 			"",
 			"</manifest>",
 			""
 		]);
 		File.saveContent(srcDir + "/AndroidManifest.xml", lines.join("\n"));
+
+		if (config.glanceWidget == true) generateGlanceWidgetInfo(srcDir);
+	}
+
+	/**
+		What the launcher needs to know before it ever asks for content: how
+		big the widget wants to be, and how often the system should offer to
+		refresh it.
+
+		`updatePeriodMillis` is 0 on purpose — the platform's own period has a
+		30-minute floor and would be the only thing driving a surface whose
+		whole point is to be current. The application asks for an update when
+		it has something to show; the snapshot is sampled then.
+	**/
+	static function generateGlanceWidgetInfo(srcDir:String):Void {
+		ensureDir(srcDir + "/res/xml");
+		var lines = [
+			'<?xml version="1.0" encoding="utf-8"?>',
+			'<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"',
+			'    android:minWidth="180dp"',
+			'    android:minHeight="110dp"',
+			'    android:updatePeriodMillis="0"',
+			'    android:resizeMode="horizontal|vertical"',
+			'    android:widgetCategory="home_screen" />',
+			""
+		];
+		File.saveContent(srcDir + "/res/xml/aui_glance_widget_info.xml", lines.join("\n"));
 	}
 
 	static function generateGradleWrapper(dir:String):Void {

@@ -56,6 +56,22 @@ class ComposeGenerator {
 		// build that emits Compose is checked, by construction.
 		rui.macros.ViewRule.register("aui.App", "body");
 
+		// The App Widget's bridge, kept and included from here.
+		//
+		// Nothing in Haxe references `aui.mui.GlanceBridge` — the generated
+		// Kotlin does, by name, through the class loader — so without this it
+		// is typed and then never emitted, and the widget fails to link
+		// against a class the jar does not carry. `Context.getType` at
+		// generation time is too late: the types to emit are settled by then.
+		//
+		// Guarded on this being a mui build, because the bridge speaks mui's
+		// surface vocabulary: a plain aui application has no such thing, and
+		// including it would break a build that never asked for a widget.
+		// `mui_backend` and not `mui`: the latter is haxelib's define, absent
+		// whenever mui comes from a source path instead of -lib — which is how
+		// mui's own examples and cafos build.
+		if (Context.defined("mui_backend")) Compiler.include("aui.mui");
+
 		// Which renderer this build targets. Asked once, here, so the
 		// deprecation warning a static build earns lands at the top of its
 		// output rather than beside whichever branch happened to run first.
@@ -187,19 +203,30 @@ class ComposeGenerator {
 		// without forcing the user to delete android/. The wrapper jar (created by gradle wrapper)
 		// is left untouched.
 		var firstGenerate = !FileSystem.exists("android/build.gradle.kts");
+		var declaresGlance = declaresGlanceSurface(appType);
 		GradleProject.generate({
 			appName: appName,
 			packageName: packageName,
 			minSdk: minSdk,
 			targetSdk: targetSdk,
 			compileSdk: compileSdk,
-			android: androidConfig
+			android: androidConfig,
+			glanceWidget: declaresGlance
 		});
 		if (firstGenerate) {
 			Context.warning('[AUI] Generated Android project in android/', Context.currentPos());
 		}
 
-		generateMainActivity(packageName, appName);
+		generateMainActivity(packageName, appName, declaresGlance);
+
+		// The App Widget, only for an application that declares the surface it
+		// draws — see declaresGlanceSurface. Context.getType forces the bridge
+		// to be typed and emitted: nothing in Haxe references it, only the
+		// Kotlin below, by name, through the class loader.
+		if (declaresGlance) {
+			Context.getType("aui.mui.GlanceBridge");
+			generateGlanceWidget(packageName, appJvmName());
+		}
 
 		// The static screen is what the transpiler exists for -- and on the
 		// dynamic path nothing uses it: MainActivity calls DynamicRoot(), which
@@ -229,6 +256,178 @@ class ComposeGenerator {
 		if (androidConfig != null) syncNativeBundle(androidConfig);
 
 		Context.warning('[AUI] Generated Compose files in ${_outputDir}', Context.currentPos());
+	}
+
+	/**
+		Whether this application declares a `Glance` surface.
+
+		The widget files are emitted only when it does, and that is not an
+		optimisation: `aui.mui.GlanceBridge` lives in the mui facade, so a
+		plain aui application built without mui has no such class, and Kotlin
+		naming it would break a build that never asked for a widget. Read off
+		the metadata rather than off `surfaces()`, because this runs at
+		generation time — nothing has run yet.
+	**/
+	static function declaresGlanceSurface(appType:Type):Bool {
+		var at = switch (appType) {
+			case TInst(ref, _): ref.get();
+			case _: null;
+		};
+		while (at != null) {
+			for (field in at.fields.get()) {
+				if (!field.meta.has(":surface")) continue;
+				for (m in field.meta.extract(":surface")) {
+					if (m.params == null || m.params.length == 0) continue;
+					switch (m.params[0].expr) {
+						case EConst(CIdent("Glance")): return true;
+						case _:
+					}
+				}
+			}
+			at = at.superClass == null ? null : at.superClass.t.get();
+		}
+		return false;
+	}
+
+	/**
+		The App Widget that draws the `Glance` surface.
+
+		Jetpack Glance and mui's `Glance` role share a name and nothing else:
+		one is Android's widget toolkit, the other is "read this at a glance",
+		a role the Sailfish cover fills too. This is where they meet.
+
+		The widget renders a **snapshot**, not a live tree: `GlanceBridge`
+		samples the surface into the same JSON a Companion frame carries, and
+		the walk below inflates it into Glance composables. That is the whole
+		snapshot-detached corner — the launcher's process never sees a closure,
+		only ids, and a tap comes back as one.
+	**/
+	static function generateGlanceWidget(packageName:String, jvmApp:String):Void {
+		var lines = [
+			"package " + packageName,
+			"",
+			"import android.content.Context",
+			"import androidx.compose.runtime.Composable",
+			"import androidx.compose.ui.unit.dp",
+			"import androidx.datastore.preferences.core.stringPreferencesKey",
+			"import androidx.glance.GlanceId",
+			"import androidx.glance.GlanceModifier",
+			"import androidx.glance.appwidget.GlanceAppWidget",
+			"import androidx.glance.appwidget.GlanceAppWidgetManager",
+			"import androidx.glance.appwidget.GlanceAppWidgetReceiver",
+			"import androidx.glance.appwidget.provideContent",
+			"import androidx.glance.appwidget.state.updateAppWidgetState",
+			"import androidx.glance.appwidget.updateAll",
+			"import androidx.glance.currentState",
+			"import androidx.glance.layout.Column",
+			"import androidx.glance.layout.Row",
+			"import androidx.glance.layout.padding",
+			"import androidx.glance.state.PreferencesGlanceStateDefinition",
+			"import androidx.glance.text.Text",
+			"import org.json.JSONArray",
+			"import org.json.JSONObject",
+			"",
+			"/**",
+			" * Draws the application's @:surface(Glance) declaration as an App",
+			" * Widget.",
+			" *",
+			" * ## The stored picture IS the snapshot",
+			" *",
+			" * Glance's provideGlance is a SESSION, not a per-update callback:",
+			" * it publishes content once and then recomposes when Compose state",
+			" * it read changes. Sampling into a local val therefore froze the",
+			" * widget at whatever the app held when the session opened — the",
+			" * first thing this widget did, and the reason it looks the way it",
+			" * does now.",
+			" *",
+			" * So the sampled tree is kept in the widget's own state: the",
+			" * application pushes a new snapshot (AuiGlance.push) and the",
+			" * composition reads it back. That is not a workaround, it is the",
+			" * snapshot corner said properly — the picture outlives the process",
+			" * that drew it, which is exactly what a home screen needs.",
+			" */",
+			"class AuiGlanceWidget : GlanceAppWidget() {",
+			"    companion object {",
+			"        val SNAPSHOT = stringPreferencesKey(\"aui.glance.snapshot\")",
+			"    }",
+			"",
+			"    override val stateDefinition = PreferencesGlanceStateDefinition",
+			"",
+			"    override suspend fun provideGlance(context: Context, id: GlanceId) {",
+			"        provideContent {",
+			"            val json = currentState(SNAPSHOT)",
+			"            if (json == null) {",
+			"                // Placed but never pushed to: the application has not",
+			"                // run since. Say so rather than draw a blank.",
+			"                Text(\"…\")",
+			"            } else {",
+			"                InflateNode(JSONObject(json))",
+			"            }",
+			"        }",
+			"    }",
+			"",
+			"    /**",
+			"     * One snapshot node, as Glance composables.",
+			"     *",
+			"     * The vocabulary is the canonical mui one the describers emit —",
+			"     * VStack/HStack/Text — not Compose's, so this walk reads the same",
+			"     * trees a cui or wui sink would.",
+			"     */",
+			"    @Composable",
+			"    private fun InflateNode(node: JSONObject) {",
+			"        val type = node.optString(\"type\")",
+			"        val props = node.optJSONObject(\"props\")",
+			"        when (type) {",
+			"            \"VStack\" -> Column(modifier = GlanceModifier.padding(8.dp)) { Children(node) }",
+			"            \"HStack\" -> Row(modifier = GlanceModifier.padding(8.dp)) { Children(node) }",
+			"            \"Text\" -> Text(props?.optString(\"text\") ?: \"\")",
+			"            // A Button in a snapshot is a label plus an action id. The",
+			"            // first slice draws the label; the tap comes next.",
+			"            \"Button\" -> Text(props?.optString(\"label\") ?: \"\")",
+			"            // A type this widget has no drawing for is named, not",
+			"            // dropped: the tree arrived as DATA, so a surprise here is",
+			"            // a fact about the sender, not a mistake in this build.",
+			"            else -> Text(\"?\" + type)",
+			"        }",
+			"    }",
+			"",
+			"    @Composable",
+			"    private fun Children(node: JSONObject) {",
+			"        val kids: JSONArray = node.optJSONArray(\"children\") ?: return",
+			"        for (i in 0 until kids.length()) {",
+			"            InflateNode(kids.getJSONObject(i))",
+			"        }",
+			"    }",
+			"}",
+			"",
+			"class AuiGlanceReceiver : GlanceAppWidgetReceiver() {",
+			"    override val glanceAppWidget: GlanceAppWidget = AuiGlanceWidget()",
+			"}",
+			"",
+			"/**",
+			" * Takes a new picture and hands it to every placed widget.",
+			" *",
+			" * The running application is sampled when there is one, so the home",
+			" * screen shows what the app last showed. With nothing running, one is",
+			" * constructed and its initial state rendered — honestly: persisting",
+			" * state across process death is the application's business, not this",
+			" * bridge's.",
+			" */",
+			"object AuiGlance {",
+			"    suspend fun push(context: Context) {",
+			"        val json = aui.mui.GlanceBridge.sampleLive()",
+			"            ?: aui.mui.GlanceBridge.sampleOf(" + jvmApp + "())",
+			"            ?: return",
+			"        val ids = GlanceAppWidgetManager(context).getGlanceIds(AuiGlanceWidget::class.java)",
+			"        for (id in ids) {",
+			"            updateAppWidgetState(context, id) { it[AuiGlanceWidget.SNAPSHOT] = json }",
+			"        }",
+			"        AuiGlanceWidget().updateAll(context)",
+			"    }",
+			"}",
+			"",
+		];
+		File.saveContent(_outputDir + "/AuiGlanceWidget.kt", lines.join("\n"));
 	}
 
 	static function collectStateFields(appType:Type):Array<{name:String, type:String, defaultValue:String}> {
@@ -407,7 +606,7 @@ class ComposeGenerator {
 	// File generators
 	// -------------------------------------------------------------------------
 
-	static function generateMainActivity(packageName:String, appName:String):Void {
+	static function generateMainActivity(packageName:String, appName:String, hasGlance:Bool):Void {
 		var jvmApp = appJvmName();
 		var lines = [
 			"package " + packageName,
@@ -419,6 +618,10 @@ class ComposeGenerator {
 			"import androidx.compose.material3.MaterialTheme",
 			"import androidx.compose.material3.Surface",
 			"import androidx.lifecycle.ViewModel",
+		].concat(hasGlance ? [
+			"import androidx.lifecycle.lifecycleScope",
+			"import kotlinx.coroutines.launch",
+		] : []).concat([
 			"",
 			"/**",
 			" * Holds the Haxe App across configuration changes.",
@@ -476,7 +679,7 @@ class ComposeGenerator {
 			"            holder.app = fresh",
 			"            fresh",
 			"        }",
-		];
+		]);
 
 		// The dynamic path walks the tree the app builds while running, instead
 		// of the Kotlin the generator emitted from the typed AST. Same app, same
@@ -503,6 +706,25 @@ class ComposeGenerator {
 		}
 
 		lines.push("    }");
+
+		// A snapshot surface has to be told when to take a new picture: the
+		// system samples a widget when it binds it and then never again on its
+		// own (updatePeriodMillis has a 30-minute floor, which is not what
+		// "current" means). Leaving the app is the honest moment — what you
+		// last saw is what the home screen should show — and it costs nothing
+		// when nothing changed.
+		//
+		// A general "resample this surface" call belongs in mui, beside the
+		// role, and would serve WidgetKit the same way (reloadTimelines). This
+		// is the first trigger, not the last word.
+		if (hasGlance) {
+			lines.push("");
+			lines.push("    override fun onStop() {");
+			lines.push("        super.onStop()");
+			lines.push("        lifecycleScope.launch { AuiGlance.push(this@MainActivity) }");
+			lines.push("    }");
+		}
+
 		lines.push("}");
 		lines.push("");
 		File.saveContent(_outputDir + "/MainActivity.kt", lines.join("\n"));

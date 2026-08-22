@@ -43,6 +43,44 @@ The façades are the *mapping* — which Compose widget a `mui` type becomes —
 not the renderer's coverage. A type outside the dynamic renderer's vocabulary
 refuses to compile, naming what is covered.
 
+## Surfaces: the Glance widget
+
+`@:surface(Glance)` becomes an Android **App Widget**. Jetpack Glance and
+mui's `Glance` role share a name and nothing else — one is Android's widget
+toolkit, the other is "read this at a glance", the role the Sailfish cover
+fills too — and this is where they meet.
+
+It is the **snapshot-detached** corner, and Android is what makes that corner
+necessary rather than merely possible: the launcher draws the widget, from
+`RemoteViews` built in our process when the *system* decides an update is due,
+not when our state changes. There is no effect to reconcile and nobody to
+reconcile it for. So the surface is *sampled*: `aui.mui.GlanceBridge` runs the
+declaration's content thunk once, describes it as `nui` nodes, and
+`nui.Snapshot.project` turns it into JSON — the same shape a Companion frame
+carries over the network. One contract, two distances.
+
+The sampled tree is kept in the widget's own state, which is what makes it a
+snapshot rather than a cache: **the picture outlives the process that drew
+it**. Kill the app and the home screen still shows what it last showed.
+(Glance's `provideGlance` is a session, not a per-update callback — sampling
+into a local value froze the widget at whatever the app held when the session
+opened. Storing the picture is both the idiomatic fix and the honest model.)
+
+A new picture is taken when the application leaves the foreground: what you
+last saw in the app is what the home screen shows. A general "resample this
+surface" call belongs in mui beside the role, and would serve WidgetKit the
+same way (`reloadTimelines`); this is the first trigger, not the last word.
+
+The widget's files — the receiver, its manifest entry, the provider XML, the
+Jetpack Glance dependency — are emitted **only** for an application that
+declares the surface. A build that never asked for a widget gets none, and
+`GlanceBridge` itself lives in the mui facade, so a plain aui application has
+no such thing.
+
+Buttons in a sampled tree draw their label today; the tap comes next — the
+action ids are already there, keyed by place, so a tap that arrives after a
+resample will invoke the current closure rather than a hole.
+
 ## Surfaces: the describer
 
 aui signs `mui.surface.Describe` at construction (`aui.mui.App`), so an aui

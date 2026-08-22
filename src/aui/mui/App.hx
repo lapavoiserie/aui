@@ -19,10 +19,12 @@ package aui.mui;
 // backend installs a describer and *could* serve one. The networked corner
 // stays off until the build asks for it with -D mui_cafos.
 //
-// Nothing local yet — Compose hosts no declared surface here. Companion
-// rides the describer installed below, which is served by cafos rather than
-// by this backend. Glance (the Android widget) is the next one.
-@:hostedRoles(Companion)
+// Glance is the App Widget: the generator emits one when the application
+// declares the surface, and `aui.mui.GlanceBridge` samples it — the
+// snapshot-detached corner, since the launcher draws it from RemoteViews
+// when the system decides, not when our state changes. Companion rides the
+// describer installed below, and is served by cafos rather than by us.
+@:hostedRoles(Glance, Companion)
 @:autoBuild(mui.macros.Surfaces.build())
 class App extends aui.App {
     public function new() {
