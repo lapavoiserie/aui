@@ -52,10 +52,15 @@ class StateMacro {
 
 		for (field in fields) {
 			var isState = false;
+			// Kept before the metadata is cleared below: this backend wipes
+			// `field.meta` to strip `@:state`, so the entry has to be held now
+			// or `durable` is gone before anyone can read it.
+			var stateMeta:Null<MetadataEntry> = null;
 			if (field.meta != null) {
 				for (meta in field.meta) {
 					if (meta.name == ":state") {
 						isState = true;
+						stateMeta = meta;
 						break;
 					}
 				}
@@ -69,11 +74,22 @@ class StateMacro {
 						var fieldName = field.name;
 						var defaultExpr = e != null ? e : macro null;
 
+						// `@:state(durable)`: the cell is born from the device
+						// store rather than from the default. aui's State
+						// constructor writes the initial value into a Compose
+						// MutableState, so correcting the cell afterwards would
+						// leave the composable showing the default.
+						var durable = rui.macros.DurableState.requestOf(field, stateMeta, t);
+						if (durable != null)
+							defaultExpr = rui.macros.DurableState.hydrate(durable, defaultExpr);
+
 						field.kind = FVar(stateType, null);
 						field.meta = []; // Remove @:state meta
 
 						// Add initialization to constructor
 						stateInits.push(macro this.$fieldName = new aui.state.State($defaultExpr, $v{fieldName}));
+						if (durable != null)
+							stateInits.push(rui.macros.DurableState.bindCall(durable, macro this, fieldName, field.pos));
 
 						newFields.push(field);
 					default:
