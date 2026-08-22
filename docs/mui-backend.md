@@ -130,9 +130,31 @@ Two limits worth stating rather than discovering:
   stored. Not done.
 - **With no process alive**, the sample that warms the table constructs a
   fresh application, whose state is the application's initial state. The tap
-  then acts on that, not on what you last saw. Persisting state across
-  process death is the application's business; the framework does not pretend
-  otherwise.
+  then acts on that, not on what you last saw — unless the cell it acts on
+  said so; see below.
+
+### What a durable cell adds here
+
+A cell declared `@:state(durable)` comes back at its last value instead of at
+the default in the source, and that is exactly the hole the second bullet
+above describes: the launcher kept the picture across process death, we kept
+nothing, and a tap on a cold process counted up from zero. Surviving the
+process is what the widget could not do before.
+
+Note what it is *not* doing on Android. On Apple the store is also how two
+binaries share a value, because the widget extension is a separate process
+that has to agree with the application. Here the widget already runs in our
+process — `AuiGlanceAction` lands in the same instance the application built
+— so there is nothing to share and the store is only about **persistence**.
+The same declaration buys two different things at two distances, which is
+worth knowing before reading the iOS notes and assuming this side is doing
+the same work.
+
+The store is a file: `/data/data/<package>/files/pavois/store`, one line per
+entry, written by the `kui-store` capability. Not `SharedPreferences` — that
+needs a `Context`, which a `kui` capability is not handed and has no business
+reaching for, and it offers no compare-and-set, which is the operation the
+whole store is built on.
 
 ## Surfaces: the describer
 
