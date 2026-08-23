@@ -68,16 +68,16 @@ opened. Storing the picture is both the idiomatic fix and the honest model.)
 
 A new picture is taken at two moments. When the application leaves the
 foreground — what you last saw in the app is what the home screen shows —
-and whenever the application asks:
+and **whenever a cell the declaration reads is written**. `GlanceBridge.follow`
+evaluates the declaration inside an effect, so `rui` knows what it depends on
+and a write re-runs it. The application asks for nothing.
 
-```haxe
-mui.surface.Resample.request(Glance);
-```
-
-That is mui's own call, and aui answers it by reaching `aui.glance.GlanceHost`
-(a fixed-package Kotlin object, the `aui.state.StateBridge` arrangement) which
-the generated code registered a pusher with. On a backend hosting no Glance
-the call compiles to nothing, so an application written for four targets says
+Android's widget is a *pull*, so that effect only samples in order to be
+subscribed: it then reaches `aui.glance.GlanceHost` (a fixed-package Kotlin
+object, the `aui.state.StateBridge` arrangement) which the generated code
+registered a pusher with, and the host samples again for itself when it draws.
+One extra walk of a small tree per change, in exchange for the host keeping
+ownership of when it draws. An application written for four targets says
 it once and means it only where it counts.
 
 The widget's files — the receiver, its manifest entry, the provider XML, the

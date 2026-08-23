@@ -140,6 +140,46 @@ class GlanceBridge {
 		_table.invoke(id, arg);
 	}
 
+	/** The surface's own effect, or `null` while nothing is followed. **/
+	static var _following:Null<rui.Signal.Effect> = null;
+
+	/**
+		Begin following the Glance declaration, so a write refreshes the widget.
+
+		The same move `sui` makes and `cafos.nui.NuiProjector` has made since it
+		shipped: the effect evaluates the declaration's thunk, `rui` records the
+		cells it read, and a write to any of them re-runs it. Nobody has to
+		remember to call `Resample.request` — a `-` button that never called it
+		used to leave the widget showing a number nobody had.
+
+		**Why the sample here is thrown away.** Android's widget is a *pull*:
+		`GlanceHost.requestUpdate()` nudges the host, and the host then calls
+		`AuiGlance.push`, which samples for itself. So this effect samples only
+		to be subscribed to what the tree reads, and the result is discarded.
+		One extra walk of a small tree per change, in exchange for the host
+		keeping ownership of when it draws — which is the contract a snapshot
+		surface is under.
+
+		Idempotent. Started with the Primary root and dropped with it, so a
+		rotation that releases the application does not leave an effect holding
+		the old instance alive.
+	**/
+	public static function follow(app:aui.mui.App):Void {
+		if (_following != null) return;
+		if (pickGlance(app.surfaces()) == null) return;
+		_following = new rui.Signal.Effect(() -> {
+			sampleOf(app);
+			aui.glance.GlanceHost.requestUpdate();
+		});
+	}
+
+	/** Stop following, and release what the effect held. **/
+	public static function unfollow():Void {
+		var e = _following;
+		_following = null;
+		if (e != null) e.dispose();
+	}
+
 	/**
 		One cover per app, one widget per declaration — but the first slice
 		hosts a single widget, so the choice is the same rule `qui` applies to

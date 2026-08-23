@@ -58,6 +58,11 @@ class ViewNodeBridge {
 	public static function setApp(app:Dynamic):Void {
 		_primary = new ViewRoot(app);
 		_primary.rebuild();
+		// The instance is whole here, so this is where the Glance surface
+		// starts following its own state. Not in `mui.App`'s constructor: the
+		// subclass has not initialised its @:state fields yet there.
+		var mine = Std.downcast(app, aui.mui.App);
+		if (mine != null) aui.mui.GlanceBridge.follow(mine);
 	}
 
 	/**
@@ -76,6 +81,9 @@ class ViewNodeBridge {
 	public static function releaseApp():Void {
 		var root = _primary;
 		_primary = null;
+		// Before anything else: an effect still holding the old application is
+		// exactly the shape of the rotation bug this method exists to fix.
+		aui.mui.GlanceBridge.unfollow();
 		if (root == null) return;
 		// Typed, not `root.app.release()`: the record holds the app as
 		// `Dynamic`, and a dynamic call is a reflective one that dead-code

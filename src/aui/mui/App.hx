@@ -45,8 +45,8 @@ class App extends aui.App {
         mui.surface.Describe.impl = v -> aui.nui.Describe.describe(v);
         // How this backend takes a new sample when the application asks. The
         // widget is the only snapshot surface here, so every role but Glance
-        // is nothing to do — and `Resample.request` has already compiled the
-        // call away on a backend that hosts none at all.
+        // is nothing to do. Applications never reach this: the surface
+        // follows its own state through `GlanceBridge.follow`.
         mui.surface.Resample.impl = (role, _) -> {
             if (role == mui.surface.SurfaceRole.Glance) aui.glance.GlanceHost.requestUpdate();
         };
