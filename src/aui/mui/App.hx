@@ -43,13 +43,6 @@ class App extends aui.App {
         // projection and the widget snapshot alike): each backend signs the
         // shared register at construction, the extraRootsOf layering.
         mui.surface.Describe.impl = v -> aui.nui.Describe.describe(v);
-        // How this backend takes a new sample when the application asks. The
-        // widget is the only snapshot surface here, so every role but Glance
-        // is nothing to do. Applications never reach this: the surface
-        // follows its own state through `GlanceBridge.follow`.
-        mui.surface.Resample.impl = (role, _) -> {
-            if (role == mui.surface.SurfaceRole.Glance) aui.glance.GlanceHost.requestUpdate();
-        };
     }
 
     public var appTitle(get, set):String;

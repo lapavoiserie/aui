@@ -226,14 +226,14 @@ class ComposeGenerator {
 		if (declaresGlance) {
 			Context.getType("aui.mui.GlanceBridge");
 			generateGlanceWidget(packageName, appJvmName());
-			// The fixed-package seam `mui.surface.Resample` reaches through:
+			// The fixed-package seam the follower's callback reaches through:
 			// Haxe names `aui.glance.GlanceHost`, the generated code above
 			// registers itself with it. Copied like StateBridge.kt.
 			var glanceDir = "android/app/src/main/kotlin/aui/glance";
 			ensureDir(glanceDir);
 			var host = locateAuiRuntimeFile("GlanceHost.kt");
 			if (host != null) copyIfNewer(host, glanceDir + "/GlanceHost.kt");
-			else Context.warning("[AUI] GlanceHost.kt not found in aui/runtime/ — Resample will not reach the widget", Context.currentPos());
+			else Context.warning("[AUI] GlanceHost.kt not found in aui/runtime/ — a state change will not reach the widget", Context.currentPos());
 		}
 
 		// The static screen is what the transpiler exists for -- and on the
@@ -474,7 +474,7 @@ class ComposeGenerator {
 			" */",
 			"object AuiGlance {",
 			"    // The application context the push needs, and the registration",
-			"    // that lets mui.surface.Resample reach us: the seam lives in a",
+			"    // that lets the Haxe side reach us: the seam lives in a",
 			"    // fixed package (aui.glance.GlanceHost) because Haxe has to name",
 			"    // it, while this object names the app and widget classes, which",
 			"    // vary. Called from every entry point that can start this",
@@ -800,7 +800,7 @@ class ComposeGenerator {
 		// body(): what changes is who reads it, and when.
 		if (RenderPath.isDynamic()) {
 			if (hasGlance) {
-				// Registers the pusher mui.surface.Resample reaches through, and
+				// Registers the pusher GlanceBridge's follower reaches through, and
 				// the context it needs. Before setApp, so a resample asked for
 				// while the first tree is being built already has somewhere to go.
 				lines.push("        AuiGlance.register(this)");
