@@ -495,13 +495,19 @@ class ViewSource implements NodeSource<View> {
 	**/
 	public function invokeAction(n:View):Void {
 		n = resolve(n);
-		var declared = actionOf(n);
-		if (declared != null) {
-			apply(declared);
-			return;
-		}
-		var tap = tapOf(n);
-		if (tap != null) tap();
+		// One gesture, one render. The handler may write several cells; an
+		// effect reading them should run once, when the gesture is over.
+		// State sinks are not delayed by this — `State.set` calls them
+		// directly — so nothing a person can see waits on the scope.
+		rui.Signal.Scheduler.batch(() -> {
+			var declared = actionOf(n);
+			if (declared != null) {
+				apply(declared);
+				return;
+			}
+			var tap = tapOf(n);
+			if (tap != null) tap();
+		});
 	}
 
 	static function apply(action:Null<StateAction>):Void {
