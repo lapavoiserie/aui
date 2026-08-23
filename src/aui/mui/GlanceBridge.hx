@@ -143,6 +143,9 @@ class GlanceBridge {
 	/** The surface's own effect, or `null` while nothing is followed. **/
 	static var _following:Null<rui.Signal.Effect> = null;
 
+	/** Which application that effect watches, so a new one re-binds it. **/
+	static var _followed:Null<aui.mui.App> = null;
+
 	/**
 		Begin following the Glance declaration, so a write refreshes the widget.
 
@@ -165,8 +168,18 @@ class GlanceBridge {
 		the old instance alive.
 	**/
 	public static function follow(app:aui.mui.App):Void {
-		if (_following != null) return;
+		// Idempotent for the SAME application, and re-bound for a different
+		// one. `setApp` legitimately runs again with a new instance when the
+		// Activity is recreated without the app being released, and a plain
+		// `if (_following != null) return` would leave the effect watching the
+		// instance that is no longer on screen: writes from the live one would
+		// wake nothing, and the widget would stop following with nothing to
+		// see. That is the rotation bug's exact shape, which `releaseApp`
+		// already carries a comment about.
+		if (_followed == app) return;
+		unfollow();
 		if (pickGlance(app.surfaces()) == null) return;
+		_followed = app;
 		_following = new rui.Signal.Effect(() -> {
 			sampleOf(app);
 			aui.glance.GlanceHost.requestUpdate();
@@ -177,6 +190,7 @@ class GlanceBridge {
 	public static function unfollow():Void {
 		var e = _following;
 		_following = null;
+		_followed = null;
 		if (e != null) e.dispose();
 	}
 
