@@ -50,156 +50,96 @@ import nui.Snapshot.ActionTable;
 **/
 @:keep
 class GlanceBridge {
-	// One table for the life of the process, on purpose: see the class doc.
-	static var _table:Null<ActionTable> = null;
-
-	// The app the last sample came from, so an action arriving later invokes
-	// closures that write to the cells that sample read.
-	static var _sampled:Null<aui.mui.App> = null;
+	static var _follower:Null<mui.surface.Follow.Follower> = null;
+	static var _followed:Null<aui.mui.App> = null;
 
 	/**
-		Sample the running application's Glance surface, or `null` when no
-		application is running — the host then constructs one and calls
-		`sampleOf`.
+		Begin following this application's Glance declaration.
+
+		The mechanism is `mui.surface.Follow`, shared with sui's widget and the
+		Companion projection. What stays here is Android's own shape: its widget
+		is a **pull**, so the callback throws the picture away and nudges the
+		host, which then asks for its own sample through `sample()` below. One
+		extra walk of a small tree per change, in exchange for the host keeping
+		ownership of when it draws.
+
+		Idempotent for the SAME application, and re-bound for a different one.
+		`setApp` legitimately runs again with a new instance when the Activity
+		is recreated without the app being released; a guard on "already
+		following" would leave the effect watching the instance that is no
+		longer on screen, and the widget would stop following with nothing to
+		see. Benjamin found exactly that by tapping.
+	**/
+	public static function follow(app:aui.mui.App):Void {
+		if (_followed == app) return;
+		unfollow();
+		var decl = pickGlance(app.surfaces());
+		if (decl == null) return;
+		_followed = app;
+		_follower = mui.surface.Follow.surface(decl, _ -> aui.glance.GlanceHost.requestUpdate());
+	}
+
+	/** Stop following, and release what the effect held. **/
+	public static function unfollow():Void {
+		var f = _follower;
+		_follower = null;
+		_followed = null;
+		if (f != null) f.dispose();
+	}
+
+	/**
+		The picture, for a host that asks.
+
+		Called from the generated Kotlin when Glance draws. Answers from the
+		live follower when there is one; otherwise constructs nothing and says
+		so, and the caller falls back to building an application of its own.
 	**/
 	public static function sampleLive():Null<String> {
-		var root = aui.runtime.ViewNodeBridge.primary();
-		if (root == null) return null;
-		return sampleOf(root.app);
+		var f = _follower;
+		return f == null ? null : f.sampleNow();
+	}
+
+	/** Kept for the generated Kotlin's fallback chain, which asks three ways
+		before giving up. Both now answer from the same follower. **/
+	public static function sampleAgain():Null<String> {
+		return sampleLive();
 	}
 
 	/**
-		Sample the application this bridge last sampled, or `null` if it has
-		sampled none yet.
-
-		The one between `sampleLive` and `sampleOf`: the Activity is gone but
-		the process is not, so there is no live root to ask and yet there is a
-		perfectly good application holding the state the user last saw.
-		Constructing a second one instead would answer with the *initial*
-		state and quietly throw away a tap that had just landed.
+		Sample an application the host built for itself, with no live one
+		around. Follows it too: a process that woke for a widget refresh should
+		keep the picture current for as long as it lives.
 	**/
-	public static function sampleAgain():Null<String> {
-		var mine = _sampled;
-		if (mine == null) return null;
-		return sampleOf(mine);
-	}
-
-	/** Sample this application's Glance surface as snapshot JSON, or `null`
-		when it declares none. **/
 	public static function sampleOf(app:Dynamic):Null<String> {
 		var mine = Std.downcast(app, aui.mui.App);
 		if (mine == null) return null;
-
-		var decl = pickGlance(mine.surfaces());
-		if (decl == null) return null;
-
-		var content = switch (decl) {
-			case Tree(_, _, c): c;
-			case _: null;
-		}
-		if (content == null) return null;
-
-		_sampled = mine;
-		if (_table == null) _table = new ActionTable();
-		var node = aui.nui.Describe.describe(content());
-		return haxe.Json.stringify(Snapshot.project(node, _table));
+		follow(mine);
+		return sampleLive();
 	}
 
 	/**
 		Run what a widget tap names.
 
-		`arg` carries the control's live value for the callback shapes that
-		have one, and is ignored by the rest; an id the table has retired is
-		answered with a word, never a crash, because it may legitimately name
-		a control that left the tree between the launcher's picture and the
-		user's finger.
-
-		## Sample before you invoke
+		`arg` carries the control's live value for the callback shapes that have
+		one, and is ignored by the rest; an id the table has retired is answered
+		with a word, never a crash, because it may legitimately name a control
+		that left the tree between the launcher's picture and the user's finger.
 
 		The tap arrives in a process that may have started for this very
-		callback, with an empty table — the launcher kept the picture, we kept
-		nothing. Sampling first rebuilds the table, and the id still resolves,
-		because ids are keyed by PLACE: walking the same tree hands the same
-		button the same id. That is the property the first interactive
-		Companion paid for, collected here at a different distance.
-
-		It holds while the tree keeps its shape. A tree whose shape changed
-		between the launcher's picture and the tap — a list one item shorter —
-		names something else or nothing, and the honest answer is the word
-		`ActionTable` already prints.
-
-		What would close that is persisting the **id → place** map beside the
-		picture and resolving a cold tap by place: `ActionTable` keys every
-		action by `"path#prop"`, and a button that did not move keeps that key
-		even when its neighbours vanish. The table itself cannot be persisted
-		— it maps ids to CLOSURES — so it is the map that would be stored, not
-		the table. Not done.
+		callback. The generated Kotlin samples before invoking, which is what
+		starts the follower and builds its table — and the id still resolves,
+		because ids are keyed by PLACE.
 	**/
 	public static function invoke(id:Int, arg:String):Void {
-		if (_table == null) return;
-		_table.invoke(id, arg);
-	}
-
-	/** The surface's own effect, or `null` while nothing is followed. **/
-	static var _following:Null<rui.Signal.Effect> = null;
-
-	/** Which application that effect watches, so a new one re-binds it. **/
-	static var _followed:Null<aui.mui.App> = null;
-
-	/**
-		Begin following the Glance declaration, so a write refreshes the widget.
-
-		The same move `sui` makes and `cafos.nui.NuiProjector` has made since it
-		shipped: the effect evaluates the declaration's thunk, `rui` records the
-		cells it read, and a write to any of them re-runs it. Nobody has to
-		remember to call `Resample.request` — a `-` button that never called it
-		used to leave the widget showing a number nobody had.
-
-		**Why the sample here is thrown away.** Android's widget is a *pull*:
-		`GlanceHost.requestUpdate()` nudges the host, and the host then calls
-		`AuiGlance.push`, which samples for itself. So this effect samples only
-		to be subscribed to what the tree reads, and the result is discarded.
-		One extra walk of a small tree per change, in exchange for the host
-		keeping ownership of when it draws — which is the contract a snapshot
-		surface is under.
-
-		Idempotent. Started with the Primary root and dropped with it, so a
-		rotation that releases the application does not leave an effect holding
-		the old instance alive.
-	**/
-	public static function follow(app:aui.mui.App):Void {
-		// Idempotent for the SAME application, and re-bound for a different
-		// one. `setApp` legitimately runs again with a new instance when the
-		// Activity is recreated without the app being released, and a plain
-		// `if (_following != null) return` would leave the effect watching the
-		// instance that is no longer on screen: writes from the live one would
-		// wake nothing, and the widget would stop following with nothing to
-		// see. That is the rotation bug's exact shape, which `releaseApp`
-		// already carries a comment about.
-		if (_followed == app) return;
-		unfollow();
-		if (pickGlance(app.surfaces()) == null) return;
-		_followed = app;
-		_following = new rui.Signal.Effect(() -> {
-			sampleOf(app);
-			aui.glance.GlanceHost.requestUpdate();
-		});
-	}
-
-	/** Stop following, and release what the effect held. **/
-	public static function unfollow():Void {
-		var e = _following;
-		_following = null;
-		_followed = null;
-		if (e != null) e.dispose();
+		var f = _follower;
+		if (f != null) f.invoke(id, arg);
 	}
 
 	/**
-		One cover per app, one widget per declaration — but the first slice
-		hosts a single widget, so the choice is the same rule `qui` applies to
-		the Sailfish cover: the declaration whose id is the role's default if
-		there is one, else the first declared. Stated here rather than left to
-		iteration order, which is not identity.
+		One cover per app, one widget per declaration — the same rule `qui`
+		applies to the Sailfish cover: the declaration whose id is the role's
+		default if there is one, else the first declared. Stated rather than
+		left to iteration order, which is not identity.
 	**/
 	static function pickGlance(decls:Array<SurfaceDecl>):Null<SurfaceDecl> {
 		var first:Null<SurfaceDecl> = null;
