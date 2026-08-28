@@ -61,8 +61,16 @@ class ViewNodeBridge {
 		// The instance is whole here, so this is where the Glance surface
 		// starts following its own state. Not in `mui.App`'s constructor: the
 		// subclass has not initialised its @:state fields yet there.
+		//
+		// Guarded because `aui` is a backend on its own as well as mui's:
+		// naming `aui.mui` unconditionally made every plain aui application
+		// require the whole mui chain to compile, which is not a dependency
+		// this library gets to impose. `mui_backend` is the flag, not `mui` --
+		// the latter is false when mui arrives through a `-cp`.
+		#if mui_backend
 		var mine = Std.downcast(app, aui.mui.App);
 		if (mine != null) aui.mui.GlanceBridge.follow(mine);
+		#end
 	}
 
 	/**
@@ -83,7 +91,9 @@ class ViewNodeBridge {
 		_primary = null;
 		// Before anything else: an effect still holding the old application is
 		// exactly the shape of the rotation bug this method exists to fix.
+		#if mui_backend
 		aui.mui.GlanceBridge.unfollow();
+		#end
 		if (root == null) return;
 		// Typed, not `root.app.release()`: the record holds the app as
 		// `Dynamic`, and a dynamic call is a reflective one that dead-code
