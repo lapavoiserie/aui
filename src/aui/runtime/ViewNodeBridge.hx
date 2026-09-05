@@ -288,7 +288,27 @@ class ViewNodeBridge {
 		return ViewSource.resolveValue(cast node);
 	}
 
+	/**
+		A value read, when somebody else's tree is drawing.
+
+		These four accessors reach into an `aui.View` field by reflection
+		rather than going through the source, which is right for aui's own
+		views — `LiveProps` defers their values and `resolveValue` is what
+		un-defers them — and fatal for a foreign tree: the cast throws
+		`ClassCastException` at the first Text drawn.
+
+		A received tree carries the CANONICAL prop names, which is what
+		`Describe` emits and what every sink already agrees on, so the same
+		question has a plain answer through the contract.
+	**/
+	static function foreignString(node:Dynamic, key:String):Null<String> {
+		var foreign = _foreign;
+		return foreign == null ? null : foreign.stringProp(cast node, key);
+	}
+
 	public static function getText(node:Dynamic):String {
+		var borrowed = foreignString(node, "text");
+		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
 
@@ -335,6 +355,8 @@ class ViewNodeBridge {
 	}
 
 	public static function getButtonLabel(node:Dynamic):String {
+		var borrowed = foreignString(node, "label");
+		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
 		var label:Dynamic = Reflect.field(node, "label");
@@ -381,6 +403,8 @@ class ViewNodeBridge {
 	}
 
 	public static function fieldPlaceholder(node:Dynamic):String {
+		var borrowed = foreignString(node, "placeholder");
+		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
 		var p:Dynamic = Reflect.field(node, "placeholder");
@@ -395,6 +419,8 @@ class ViewNodeBridge {
 	// action makes -- so nothing here bypasses the reactive core.
 
 	public static function fieldText(node:Dynamic):String {
+		var borrowed = foreignString(node, "text");
+		if (borrowed != null) return borrowed;
 		var st = stateOf(node, "textState");
 		return st == null ? "" : Std.string(st.get());
 	}
@@ -405,6 +431,8 @@ class ViewNodeBridge {
 	}
 
 	public static function toggleLabel(node:Dynamic):String {
+		var borrowed = foreignString(node, "label");
+		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
 		var label:Dynamic = Reflect.field(node, "label");
@@ -412,6 +440,7 @@ class ViewNodeBridge {
 	}
 
 	public static function toggleValue(node:Dynamic):Bool {
+		if (_foreign != null) return reader().boolProp(cast node, "isOn");
 		var st = stateOf(node, "isOnState");
 		return st == null ? false : st.get() == true;
 	}
@@ -441,9 +470,17 @@ class ViewNodeBridge {
 		return reader().floatProp(node, "max");
 	}
 
-	/** A state a view holds under `field`, or null if it was built without one. **/
+	/**
+		A state a view holds under `field`, or null if it was built without one.
+
+		Always null for a foreign tree, and that is the honest answer rather
+		than an oversight: a received tree carries VALUES, not cells — the
+		cells stayed with the application that served it, which is the whole
+		model. So an editable control reads its value through the prop below
+		and writes it back by sending an action home.
+	**/
 	static function stateOf(node:Dynamic, field:String):Null<Dynamic> {
-		if (node == null) return null;
+		if (node == null || _foreign != null) return null;
 		var st:Dynamic = Reflect.field(node, field);
 		return st;
 	}
