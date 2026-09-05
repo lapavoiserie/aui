@@ -249,6 +249,29 @@ class GradleProject {
 		generator overwrites — a known limitation of the generated tree, not
 		something `kui` introduces.
 	**/
+	/**
+		The manifest components a `kui` capability carries.
+
+		Pasted inside `<application>`, verbatim. Some Android abilities are a
+		declaration rather than a call — a `WearableListenerService` receives
+		while the application is backgrounded, and one the manifest never named
+		receives nothing — so the declaration has to travel with the capability
+		like its permissions do.
+
+		This generator overwrites the manifest on every build, so a component
+		an author added by hand would not survive; a capability's does.
+	**/
+	static function kuiComponents():Array<String> {
+		var fragments = kui.macros.Emit.current().strings("gradle", "components");
+		if (fragments.length == 0) return [];
+
+		var lines = ["", "        <!-- Declared by kui capabilities -->"];
+		for (fragment in fragments)
+			for (line in fragment.split("\n"))
+				lines.push("        " + line);
+		return lines;
+	}
+
 	static function kuiPermissions():Array<String> {
 		var names = kui.macros.Emit.current().strings("gradle", "permissions");
 		if (names.length == 0) return [];
@@ -314,7 +337,7 @@ class GradleProject {
 			'                android:name="android.appwidget.provider"',
 			'                android:resource="@xml/aui_glance_widget_info" />',
 			"        </receiver>",
-		] : []).concat([
+		] : []).concat(kuiComponents()).concat([
 			"    </application>",
 			"",
 			"</manifest>",

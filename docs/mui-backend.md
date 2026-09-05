@@ -178,6 +178,69 @@ side, so the Haxe tree cannot know which tab shows; said with a trace, not
 guessed. A described button's tap does exactly what the dynamic renderer's
 does: the declarative `StateAction`, else the `OnTapGesture` closure.
 
+## Drawing somebody else's tree
+
+An aui application can be a **sink**: it draws a `nui` tree that arrived over a
+wire instead of its own `body()`.
+
+```haxe
+var source = new nui.SelfSource(() -> receivedTree);
+aui.runtime.ViewNodeBridge.readThrough(source);   // null hands the screen back
+```
+
+This cost less than it looks. The renderer already reads through
+`nui.NodeSource`, and every node handle crosses to Kotlin as `Dynamic` —
+`java.lang.Object` on the JVM — so **which source answers is a Haxe-side
+question the native half never sees**. One function was hardwired to
+`aui.nui.ViewSource`.
+
+Three things had to be told apart on the way:
+
+- **Three accessors are aui's own**, not the contract's — `tabTitle`,
+  `tabIcon`, `conditionValue`, all about aui view classes. They answer
+  neutrally while a foreign source draws. `conditionValue` answers **true**:
+  a `ConditionalView` is resolved before it is ever described, so what arrives
+  over a wire is the branch that won.
+- **Four value accessors reached into an `aui.View` field by reflection** —
+  right for aui's own views, where `LiveProps` defers values and
+  `resolveValue` un-defers them, and a `ClassCastException` on the first `Text`
+  of a foreign tree. They now read the canonical prop names, which is what
+  `Describe` emits and what every sink already agrees on.
+- **`stateOf` answers null for a foreign tree, by construction.** A received
+  tree carries *values*, not cells: the cells stayed with the application that
+  served it. So an editable control reads its value as a prop and writes it
+  back by sending an action home.
+
+### Making it repaint
+
+`DynamicComposable` rebuilds **inside** composition, so what Compose recomposes
+on is whatever cell the tree read while being built. A foreign tree reads none
+of ours — it came off a wire — so the thunk must read a cell the receiver
+writes:
+
+```haxe
+var source = new nui.SelfSource(function() {
+    generation.get();       // an @:state the receiver bumps per frame
+    return receivedTree;
+});
+```
+
+Without it a frame arrives, replaces the tree, and never reaches the screen.
+
+## The application Context, for capabilities
+
+`aui.runtime.AndroidContext.application` holds it, set from the generated entry
+point before the app's own `onAndroidContextReady` hook runs.
+
+A `kui` capability is plain Haxe with a native payload: it has no Activity and
+no way to ask Android for a Context, and almost every Android API needs one.
+Only the backend knows when one exists.
+
+The **application** context, never an Activity: a capability that captured an
+Activity would hold a destroyed screen across a rotation — the leak
+`aui.App.release` exists to close. It is null before the first Activity runs,
+so a capability reading it must say what it does with nothing.
+
 ## See also
 
 - [Adding a backend](https://lapavoiserie.github.io/mui/#/adding-a-backend) — the
