@@ -128,8 +128,13 @@ class ViewNodeBridge {
 		}
 	}
 
-	/** Re-evaluate the Primary tree by re-running the app's `body()`. **/
+	/** Re-evaluate the tree that is drawing — the app's `body()`, or whatever
+		foreign source was installed. **/
 	public static function rebuild():Void {
+		if (_foreign != null) {
+			_foreign.rebuild();
+			return;
+		}
 		if (_primary != null) _primary.rebuild();
 	}
 
@@ -139,23 +144,54 @@ class ViewNodeBridge {
 		Exposed so a consumer that knows nothing about aui — a devtool, an
 		inspector, another renderer — can walk the tree through `nui`.
 	**/
-	public static function source():ViewSource {
+	public static function source():nui.NodeSource<Dynamic> {
 		return reader();
 	}
 
+	/**
+		Draw somebody else's tree instead of this application's.
+
+		The renderer already reads through `nui.NodeSource` and every handle
+		crosses to Kotlin as `Dynamic` — `java.lang.Object` on the JVM — so
+		which source answers is a Haxe-side question the native half never sees.
+		This is what lets an application be a **sink**: a tree that arrived over
+		a wire is already `nui.Node`s, and `nui.SelfSource` walks them with no
+		conversion and no second name table to keep in step.
+
+		Until this is called, nothing changes: the application's own
+		`ViewSource` answers, which is every ordinary app.
+
+		Pass `null` to hand the screen back.
+	**/
+	public static function readThrough(source:Null<nui.SelfSource>):Void {
+		_foreign = source;
+	}
+
+	/** Whether a foreign source is drawing. **/
+	public static function reading():Bool
+		return _foreign != null;
+
+	// Typed as `SelfSource` rather than the bare contract, because aui draws
+	// exactly two things: its own views, or a tree that arrived as `nui.Node`.
+	// Naming the second is what lets the handful of accessors outside the pull
+	// contract keep answering instead of shrugging.
+	static var _foreign:Null<nui.SelfSource> = null;
+
 	// --- Accessors called from Kotlin -------------------------------------
 	//
-	// All forward to a ViewSource. They take the node they are asked about,
+	// All forward to a NodeSource. They take the node they are asked about,
 	// so they serve any root's nodes; the Primary's source is preferred for
 	// its caches and classify attribution.
 
-	static function reader():ViewSource {
+	static function reader():nui.NodeSource<Dynamic> {
+		if (_foreign != null) return _foreign;
 		if (_primary != null) return _primary.source;
 		if (_orphan == null) _orphan = new ViewSource(null);
 		return _orphan;
 	}
 
 	public static function getRoot():Dynamic {
+		if (_foreign != null) return _foreign.root();
 		return _primary == null ? null : _primary.rootHandle();
 	}
 
@@ -208,7 +244,10 @@ class ViewNodeBridge {
 		The pull contract cannot express an optional parameter yet.
 	**/
 	public static function modifierHasParam(node:Dynamic, index:Int, param:Int):Bool {
-		return reader().modifierHasParam(cast node, index, param);
+		var foreign = _foreign;
+		if (foreign != null) return foreign.modifierHasParam(cast node, index, param);
+		var mine = own();
+		return mine == null ? false : mine.modifierHasParam(cast node, index, param);
 	}
 
 	public static function actionId(node:Dynamic):Int {
@@ -309,16 +348,36 @@ class ViewNodeBridge {
 		return header != null ? Std.string(header) : "";
 	}
 
+	// The three questions below are aui's own, not the shared contract's: they
+	// ask about `TabView` and `ConditionalView`, which are aui view classes.
+	// A foreign tree has neither -- a `ConditionalView` is resolved before it
+	// is ever described, so what arrives over a wire is the branch that won.
+	// Hence `own()` rather than `reader()`, and a neutral answer when somebody
+	// else is drawing.
+
 	public static function tabTitle(node:Dynamic, index:Int):String {
-		return reader().tabTitle(cast node, index);
+		var mine = own();
+		return mine == null ? "" : mine.tabTitle(cast node, index);
 	}
 
 	public static function tabIcon(node:Dynamic, index:Int):String {
-		return reader().tabIcon(cast node, index);
+		var mine = own();
+		return mine == null ? "" : mine.tabIcon(cast node, index);
 	}
 
 	public static function conditionValue(node:Dynamic):Bool {
-		return reader().conditionValue(cast node);
+		var mine = own();
+		// True, not false: a conditional the renderer asks about in a foreign
+		// tree is one that already resolved, so its content is meant to show.
+		return mine == null ? true : mine.conditionValue(cast node);
+	}
+
+	/** aui's own source, or `null` while a foreign one is drawing. **/
+	static function own():Null<ViewSource> {
+		if (_foreign != null) return null;
+		if (_primary != null) return _primary.source;
+		if (_orphan == null) _orphan = new ViewSource(null);
+		return _orphan;
 	}
 
 	public static function fieldPlaceholder(node:Dynamic):String {

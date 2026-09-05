@@ -785,6 +785,9 @@ class ComposeGenerator {
 			"            // application context, never this Activity: what the app is",
 			"            // handed here it may hold, and it now outlives the Activity",
 			"            // that created it.",
+			"            // Before the hook, because a capability the app touches",
+			"            // inside it would otherwise find none.",
+			"            aui.runtime.AndroidContext.application = applicationContext",
 			"            fresh.onAndroidContextReady(",
 			"                applicationInfo.nativeLibraryDir,",
 			"                applicationContext.filesDir.absolutePath,",
@@ -2327,6 +2330,19 @@ class ComposeGenerator {
 		// package as the Haxe ViewNodeBridge it calls, so the class loader pairs
 		// them with no import and no JNI.
 		var runtimeDir = "android/app/src/main/kotlin/aui/runtime";
+
+		// The application Context, for code that has no Activity to ask. Always
+		// emitted: a kui capability carrying Kotlin has no other way to reach
+		// one, and which capabilities a build carries is not this file's
+		// business.
+		ensureDir(runtimeDir);
+		var context = locateAuiRuntimeFile("AndroidContext.kt");
+		if (context != null) {
+			copyIfNewer(context, runtimeDir + "/AndroidContext.kt");
+		} else {
+			Context.warning('[AUI] AndroidContext.kt not found in aui/runtime/ — capabilities needing a Context will find none', Context.currentPos());
+		}
+
 		var rendererOut = runtimeDir + "/DynamicComposable.kt";
 
 		if (RenderPath.isDynamic()) {
