@@ -19,6 +19,10 @@ class GradleProject {
 			`aui.json`. Separate from a capability's, which travel with the
 			capability. **/
 		?permissions:Array<String>,
+		/** The application's own `<application>` children, from
+			`aui.json`. Separate from a capability's, for the same reason its
+			permissions are. **/
+		?components:Array<String>,
 		/** The application declares a `Glance` surface, so the project needs
 			the App Widget: its Jetpack Glance dependency, its receiver in the
 			manifest, and the provider XML the receiver points at. **/
@@ -265,6 +269,35 @@ class GradleProject {
 		This generator overwrites the manifest on every build, so a component
 		an author added by hand would not survive; a capability's does.
 	**/
+	/**
+		What the application itself declares inside `<application>`, from
+		`aui.json#components`.
+
+		The twin of `aui.json#permissions`, and it exists for the same reason:
+		this generator overwrites the manifest on every build, so a component
+		an author added by hand is gone at the next one. Some things an
+		application needs are a declaration rather than a call, and no
+		capability knows about them — a `Service` an application runs itself is
+		the case that asked for this. Its Kotlin is the application's, so its
+		`<service>` line is too.
+
+		Each entry is pasted verbatim, indented into place. Nothing is parsed
+		or validated: Android's own manifest merger is the authority on what is
+		legal there, and a second opinion here would only be wrong later.
+	**/
+	static function appComponents(app:Null<Array<String>>):Array<String> {
+		if (app == null || app.length == 0)
+			return [];
+		var lines = ["", "        <!-- Declared by the application (aui.json#components) -->"];
+		for (fragment in app)
+			for (line in fragment.split("\n"))
+				lines.push("        " + line);
+		return lines;
+	}
+
+	/**
+		The manifest components a `kui` capability carries.
+	**/
 	static function kuiComponents():Array<String> {
 		var fragments = kui.macros.Emit.current().strings("gradle", "components");
 		if (fragments.length == 0) return [];
@@ -326,6 +359,7 @@ class GradleProject {
 		appName:String,
 		packageName:String,
 		?permissions:Array<String>,
+		?components:Array<String>,
 		minSdk:Int,
 		targetSdk:Int,
 		compileSdk:Int,
@@ -378,7 +412,7 @@ class GradleProject {
 			'                android:name="android.appwidget.provider"',
 			'                android:resource="@xml/aui_glance_widget_info" />',
 			"        </receiver>",
-		] : []).concat(kuiComponents()).concat([
+		] : []).concat(appComponents(config.components)).concat(kuiComponents()).concat([
 			"    </application>",
 			"",
 			"</manifest>",

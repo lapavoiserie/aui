@@ -50,6 +50,36 @@ MyApp/
 }
 ```
 
+#### What the application asks Android for
+
+The Android project is regenerated on every build, manifest included, so
+anything added to it by hand is gone at the next one. Two keys exist for what
+would otherwise have to be edited there.
+
+`permissions` lists the `<uses-permission>` entries the application asks for
+itself. A capability's own travel with the capability and do not belong here;
+the two lists are merged, and a name in both is written once.
+
+`components` lists the children of `<application>` the application declares:
+a `Service`, a `Receiver`, a `Provider` whose Kotlin the application ships.
+Each entry is pasted verbatim, so it is ordinary manifest XML.
+
+```json
+{
+  "permissions": [
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+  ],
+  "components": [
+    "<service\n    android:name=\"com.example.myapp.AgentService\"\n    android:exported=\"false\"\n    android:foregroundServiceType=\"specialUse\" />"
+  ]
+}
+```
+
+Nothing here is parsed or checked. Android's manifest merger is the authority
+on what is legal inside `<application>`, and a second opinion in the generator
+would only be wrong later.
+
 ### build.hxml
 
 ```

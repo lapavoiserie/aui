@@ -188,6 +188,10 @@ class ComposeGenerator {
 		// added by hand does not survive -- this is where an application says
 		// it, once, in the file it already configures itself from.
 		var permissions:Null<Array<String>> = null;
+		// Same argument, for what goes INSIDE `<application>`: a `<service>` or
+		// a `<receiver>` an application declares itself would be overwritten
+		// too, so it is said here rather than in the generated file.
+		var components:Null<Array<String>> = null;
 		if (FileSystem.exists("aui.json")) {
 			try {
 				var json = haxe.Json.parse(File.getContent("aui.json"));
@@ -198,6 +202,7 @@ class ComposeGenerator {
 				if (json.compileSdk != null) compileSdk = json.compileSdk;
 				if (json.android != null) androidConfig = json.android;
 				if (json.permissions != null) permissions = json.permissions;
+				if (json.components != null) components = json.components;
 			} catch (e:Dynamic) {}
 		}
 
@@ -218,6 +223,7 @@ class ComposeGenerator {
 			compileSdk: compileSdk,
 			android: androidConfig,
 			permissions: permissions,
+			components: components,
 			glanceWidget: declaresGlance
 		});
 		if (firstGenerate) {
