@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -185,6 +186,28 @@ object DynamicHost {
 
     fun setPickerOpen(path: String, open: Boolean) {
         openPickers[path] = open
+    }
+
+    /**
+     * What has been typed into a field but has not come back yet, by path.
+     *
+     * Same home and same reason as the two above: the tree is rebuilt from
+     * Haxe on every recomposition, so a `remember` inside the recursive
+     * DynamicView is not a stable place to keep it.
+     *
+     * The rule is nui's, stated for a TextInput: a received value is not
+     * applied to a field somebody is typing in.
+     */
+    private val drafts = mutableStateMapOf<String, String>()
+
+    fun fieldValue(path: String, arrived: String): String = drafts[path] ?: arrived
+
+    fun setDraft(path: String, value: String) {
+        drafts[path] = value
+    }
+
+    fun clearDraft(path: String) {
+        drafts.remove(path)
     }
 }
 
@@ -440,9 +463,20 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
         // the tree is rebuilt -- the state is the single source of truth, and a
         // field that kept its own copy would drift from what the rest of the
         // view reads.
+        // What it shows while somebody is typing is what they typed, not what
+        // last arrived. In a received tree the value is the sender's and the
+        // sender is a keystroke or two behind during typing, so reading
+        // `node.fieldText` on every recomposition puts the previous value back
+        // under the caret between two letters -- the defect the Farceur session
+        // hit on pui, in a tree that arrives the same way here.
+        //
+        // Not gated on the tree being foreign: for a field of this
+        // application's own tree the write lands in a cell and is read straight
+        // back, so the draft and the value are the same string.
         "TextField" -> OutlinedTextField(
-            value = node.fieldText,
+            value = DynamicHost.fieldValue(path, node.fieldText),
             onValueChange = {
+                DynamicHost.setDraft(path, it)
                 // No invalidate: `value` above reads the state through Haxe
                 // *during composition*, and Compose's snapshot system records
                 // that read however deep the call stack -- including through
@@ -454,7 +488,9 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
             },
             placeholder = { Text(node.fieldPlaceholder) },
             singleLine = true,
-            modifier = mod
+            // Leaving the field gives the value back to whoever owns it,
+            // including their version of it if they disagreed with the edit.
+            modifier = mod.onFocusChanged { if (!it.isFocused) DynamicHost.clearDraft(path) }
         )
 
         "Toggle" -> Row(
