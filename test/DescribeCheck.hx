@@ -122,6 +122,9 @@ class DescribeCheck extends App {
 			&& PropValueTools.asString(mic.props.get("name")) == "mic-off"
 			&& PropValueTools.asString(mic.props.get("label")) == "Muted");
 		check("an unlabelled Icon sends no label", !pictures.children[2].props.exists("label"));
+		var take = aui.nui.Describe.describe(new aui.ui.Button("TAKE", null, "swap"));
+		check("a Button sends its icon's name", PropValueTools.asString(take.props.get("icon")) == "swap");
+		check("and one without an icon sends none", !aui.nui.Describe.describe(new aui.ui.Button("Go")).props.exists("icon"));
 
 		Sys.println(fails == 0 ? "\nall good" : '\n$fails failed');
 		Sys.exit(fails == 0 ? 0 : 1);

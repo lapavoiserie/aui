@@ -121,9 +121,11 @@ class Describe {
 				// mui facade's route. The ORIGINAL view is captured, not the
 				// resolved copy: the modifier chain with the closure lives on
 				// whichever node the tree holds.
-				new Node("Button")
+				var button = new Node("Button")
 					.prop("label", PString(b.label))
 					.prop("onClick", PCallback(() -> invoker.invokeAction(view)));
+				if (b.properties.exists("icon")) button.prop("icon", PString(Std.string(b.properties.get("icon"))));
+				button;
 
 			case "Toggle":
 				var t:aui.ui.Toggle = cast v;

@@ -4,12 +4,13 @@ import mui.ui.HStack;
 import mui.ui.Icon;
 import mui.ui.IconName;
 import mui.ui.Image;
+import mui.ui.ScrollView;
 import mui.ui.Text;
 import mui.ui.VStack;
 
 /**
 	Every icon of `nui.Icons`, and a picture from each source aui draws itself,
-	with the failures that must show their `alt`.
+	with the failures that must show their `alt`, and buttons with an icon.
 
 	Pictures: `data:` contained and covered, `file:` (written at start-up from
 	the same bytes), and three that cannot be drawn — an asset this build does
@@ -17,6 +18,8 @@ import mui.ui.VStack;
 **/
 class ImagesApp extends App {
 	final filePath:String;
+
+	@:state var taps:Int = 0;
 
 	public function new() {
 		super();
@@ -28,7 +31,15 @@ class ImagesApp extends App {
 
 	override function body():View {
 		var data = "data:image/png;base64," + TestPicture.BASE64;
-		var rows:Array<View> = [new Text("Icons")];
+		var rows:Array<View> = [
+			new Text("Buttons: " + taps),
+			new HStack([
+				button("TAKE", "swap"),
+				button("", "mic-off"),
+				button("Plain", null),
+			], 12),
+			new Text("Icons"),
+		];
 		var names = nui.Icons.NAMES;
 		var perRow = 6;
 		var i = 0;
@@ -50,7 +61,13 @@ class ImagesApp extends App {
 			new Image("http://example.org/a.png", "http is refused", {width: 96, height: 48}),
 			new Image("data:image/png;base64,SGVsbG8=", "not a PNG", {width: 96, height: 48}),
 		], 12));
-		return new VStack(rows, 8);
+		return new ScrollView([new VStack(rows, 8)]);
+	}
+
+	function button(label:String, icon:Null<String>):View {
+		var b = new aui.ui.Button(label, null, icon);
+		b.onTapGesture(() -> taps = taps + 1);
+		return b;
 	}
 
 	static function main() {}
