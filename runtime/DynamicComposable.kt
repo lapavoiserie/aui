@@ -285,8 +285,9 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
     val mod = applyModifiers(node, modifier)
 
     when (node.viewType) {
-        "VStack" -> Column(modifier = mod) { dynamicChildren(node, path) }
-        "HStack" -> Row(modifier = mod) { dynamicChildren(node, path) }
+        // A stack's spacing, in dp; none reads as 0, Compose's own default.
+        "VStack" -> Column(modifier = mod, verticalArrangement = Arrangement.spacedBy(stackSpacing(node))) { dynamicChildren(node, path) }
+        "HStack" -> Row(modifier = mod, horizontalArrangement = Arrangement.spacedBy(stackSpacing(node))) { dynamicChildren(node, path) }
         "ZStack" -> Box(modifier = mod) {
             node.children.forEachIndexed { index, child ->
                 key(child.identity(index)) {
@@ -546,6 +547,9 @@ fun isBold(node: ViewNode): Boolean {
     }
     return false
 }
+
+private fun stackSpacing(node: ViewNode) =
+    ViewNodeBridge.getFloatProperty(node.handle, "spacing").toFloat().coerceAtLeast(0f).dp
 
 /** Apply the Haxe modifier chain, in order. */
 @Composable
