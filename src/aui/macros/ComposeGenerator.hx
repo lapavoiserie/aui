@@ -276,6 +276,11 @@ class ComposeGenerator {
 		// Sync native libs and assets declared in aui.json#android on every build.
 		if (androidConfig != null) syncNativeBundle(androidConfig);
 
+		// And what the application ships under `assets/`, the directory mui's
+		// `Assets.src` checks a name against: the same files on every backend,
+		// here mirrored into the one place `AssetManager.open` reads.
+		syncApplicationAssets();
+
 		Context.warning('[AUI] Generated Compose files in ${_outputDir}', Context.currentPos());
 	}
 
@@ -2465,6 +2470,35 @@ class ComposeGenerator {
 		if (copied > 0) {
 			Context.warning('[AUI] nativeBundle: ' + copied + ' file(s) copied, ' + skipped + ' up-to-date', Context.currentPos());
 		}
+	}
+
+	/**
+		Mirror the application's own `assets/` into the Android project.
+
+		Shallow-cleaned first: a file deleted from the source would otherwise
+		stay in the APK for ever, and be found by an `asset:` source the
+		application no longer ships. The directory the other backends read is
+		the same one, which is the point of the convention.
+	**/
+	static function syncApplicationAssets():Void {
+		var dest = "android/app/src/main/assets/";
+		if (!FileSystem.exists("assets") || !FileSystem.isDirectory("assets")) return;
+		// Only the files this directory owns are removed: `aui.json#android`
+		// mirrors its own subdirectories here too.
+		for (entry in FileSystem.readDirectory("assets")) removeTree(dest + entry);
+		var stats = mirrorDir("assets", dest);
+		if (stats.copied > 0)
+			Context.warning('[AUI] assets: ' + stats.copied + ' file(s) copied from assets/', Context.currentPos());
+	}
+
+	static function removeTree(path:String):Void {
+		if (!FileSystem.exists(path)) return;
+		if (!FileSystem.isDirectory(path)) {
+			FileSystem.deleteFile(path);
+			return;
+		}
+		for (entry in FileSystem.readDirectory(path)) removeTree(path + "/" + entry);
+		FileSystem.deleteDirectory(path);
 	}
 
 	// Returns true if a copy actually happened, false if the destination was already current.
