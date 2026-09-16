@@ -112,7 +112,13 @@ class Describe {
 		var out:Node = switch (v.viewType) {
 			case "Text":
 				var t:aui.ui.Text = cast v;
-				new Node("Text").prop("text", PString(sampleText(t)));
+				var text = new Node("Text").prop("text", PString(sampleText(t)));
+				if (t.scale != null) text.prop("scale", PString(t.scale));
+				if (t.family != null) text.prop("family", PString(t.family));
+				if (t.weight != null) text.prop("weight", PInt(t.weight));
+				if (t.italicFace == true) text.prop("italic", PBool(true));
+				if (t.numbers != null) text.prop("numbers", PString(t.numbers));
+				text;
 
 			case "Button":
 				var b:aui.ui.Button = cast v;

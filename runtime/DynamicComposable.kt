@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.padding
@@ -296,11 +297,15 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
             }
         }
 
+        // How the text is set arrives as props of the node (nui's TextStyle),
+        // with the scale also arriving as a Font modifier from the static
+        // path. Whichever is there, they say the same thing.
         "Text" -> Text(
             text = node.textContent,
             modifier = mod,
-            style = typographyOf(node) ?: LocalTextStyle.current,
-            fontWeight = if (isBold(node)) FontWeight.Bold else null,
+            style = styleOf(node),
+            fontWeight = weightOf(node),
+            fontStyle = if (node.property("italic") == "true") FontStyle.Italic else null,
         )
 
         "Button" -> {
@@ -513,6 +518,50 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
  * `CustomFont` is not here: it carries a name and a size rather than a step,
  * and answering it means building a TextStyle rather than choosing one.
  */
+/**
+ * The style a Text is set in: its scale, the family the application ships, and
+ * digits of one width.
+ *
+ * A family is a name (`nui.TextStyle`), and the file it names is in the
+ * application's assets. `AuiFonts` resolves the name to a Typeface once and
+ * answers null for one this application does not ship -- which is what a tree
+ * naming an unknown family must do: the platform's own font, silently.
+ */
+@Composable
+fun styleOf(node: ViewNode): TextStyle {
+    var style = scaleOf(node) ?: typographyOf(node) ?: LocalTextStyle.current
+    val family = AuiFonts.family(node.property("family"))
+    if (family != null) style = style.copy(fontFamily = family)
+    if (node.property("numbers") == "tabular")
+        style = style.copy(fontFeatureSettings = "tnum")
+    return style
+}
+
+/** The canon's four steps, as Material's typography. **/
+@Composable
+fun scaleOf(node: ViewNode): TextStyle? {
+    val scale = MaterialTheme.typography
+    return when (node.property("scale")) {
+        // Material's Display steps are for a single number filling a screen,
+        // not for a page title; Headline is where its own guidance points.
+        "title" -> scale.headlineSmall
+        "subtitle" -> scale.titleMedium
+        "body" -> scale.bodyLarge
+        "caption" -> scale.bodySmall
+        else -> null
+    }
+}
+
+/** A weight of the canon -- 100 to 900 -- or what the chain asked for. **/
+fun weightOf(node: ViewNode): FontWeight? {
+    val said = node.property("weight")
+    if (said.isNotEmpty()) {
+        val weight = said.toIntOrNull()
+        if (weight != null) return FontWeight(weight.coerceIn(100, 900))
+    }
+    return if (isBold(node)) FontWeight.Bold else null
+}
+
 @Composable
 fun typographyOf(node: ViewNode): TextStyle? {
     for (i in 0 until node.modifierCount) {

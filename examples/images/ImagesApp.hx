@@ -38,6 +38,17 @@ class ImagesApp extends App {
 				button("", "mic-off"),
 				button("Plain", null),
 			], 12),
+			new Text("Text"),
+			new HStack([
+				new Text("plain"),
+				new Text("Georgia", Body, {family: mui.Fonts.family("Georgia")}),
+				new Text("bold", Body, {weight: 700}),
+				new Text("italic", Body, {italic: true}),
+			], 10),
+			new HStack([
+				new Text("00:11:22"),
+				new Text("00:11:22", Body, {numbers: Tabular}),
+			], 10),
 			new Text("Icons"),
 		];
 		var names = nui.Icons.NAMES;

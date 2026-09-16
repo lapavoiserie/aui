@@ -104,6 +104,21 @@ class DescribeCheck extends App {
 		}
 		check("a remote toggle write reaches the @:state cell", app.lit == true);
 
+		// --- How a text is set, canonical on the wire ---
+		var set = aui.nui.Describe.describe(new aui.ui.VStack(null, null, [
+			new aui.mui.Text("Sources", Title),
+			new aui.mui.Text("00:12:34", Body, {family: mui.ui.FontFamily.fromString("Georgia"), weight: 600, numbers: Tabular}),
+			new aui.mui.Text("plain")
+		]));
+		check("a heading crosses as a heading, which it did not before the canon",
+			PropValueTools.asString(set.children[0].props.get("scale")) == "title");
+		check("a family, a weight and tabular digits cross as props",
+			PropValueTools.asString(set.children[1].props.get("family")) == "Georgia"
+			&& PropValueTools.asInt(set.children[1].props.get("weight")) == 600
+			&& PropValueTools.asString(set.children[1].props.get("numbers")) == "tabular");
+		check("and a text that said nothing carries nothing", !set.children[2].props.exists("family")
+			&& !set.children[2].props.exists("weight") && !set.children[2].props.exists("italic"));
+
 		// --- Pictures and icons, canonical on the wire ---
 		var pictures = aui.nui.Describe.describe(new aui.ui.VStack(null, null, [
 			new aui.mui.Image("asset:logo.png", "Farceur", {width: 120, fit: Cover}),

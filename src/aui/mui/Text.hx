@@ -10,8 +10,16 @@ import mui.ui.TextScale;
 	`#if (mui_backend == "aui")` branch it used to live in.
 **/
 class Text extends aui.ui.Text {
-    public function new(content:String, ?scale:TextScale) {
+    public function new(content:String, ?scale:TextScale, ?style:mui.ui.TextStyle) {
         super(content);
+        // Both: the props are what crosses a wire and what the dynamic
+        // renderer switches on, the modifier is what the static generator
+        // reads off the typed AST. They say the same thing.
+        styled(scale == null ? null : Std.string(scale).toLowerCase(),
+            style == null || style.family == null ? null : (style.family : String),
+            style == null ? null : style.weight,
+            style == null ? null : style.italic,
+            style != null && style.numbers == mui.ui.Numbers.Tabular);
         if (scale != null) font(switch (scale) {
             // Material's Display steps are for a single number filling a
             // screen, not for a page title. Headline is the step its own
