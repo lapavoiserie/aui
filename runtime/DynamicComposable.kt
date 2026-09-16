@@ -3,6 +3,8 @@ package aui.runtime
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -105,6 +107,13 @@ value class ViewNode(val handle: Any) {
     val toggleValue: Boolean get() = ViewNodeBridge.toggleValue(handle)
     fun setToggleValue(value: Boolean) = ViewNodeBridge.setToggleValue(handle, value)
 
+    val pickerLabel: String get() = ViewNodeBridge.pickerLabel(handle)
+    val pickerIndex: Int get() = ViewNodeBridge.pickerIndex(handle)
+    fun setPickerIndex(value: Int) = ViewNodeBridge.setPickerIndex(handle, value)
+    val pickerOptionCount: Int get() = ViewNodeBridge.pickerOptionCount(handle)
+    fun pickerOption(index: Int): String = ViewNodeBridge.pickerOption(handle, index)
+    val pickerOptions: List<String> get() = (0 until pickerOptionCount).map { pickerOption(it) }
+
     val sliderValue: Double get() = ViewNodeBridge.sliderValue(handle)
     fun setSliderValue(value: Double) = ViewNodeBridge.setSliderValue(handle, value)
     val sliderMin: Double get() = ViewNodeBridge.sliderMin(handle)
@@ -157,6 +166,25 @@ object DynamicHost {
 
     fun selectTab(path: String, index: Int) {
         tabSelections[path] = index
+    }
+
+    /**
+     * Which pickers have their list showing, keyed the same way and for the
+     * same reason.
+     *
+     * A `remember { mutableStateOf(false) }` inside the Picker branch is the
+     * obvious place and the wrong one: tapping the drop-down recomposes
+     * DynamicRoot, which rebuilds the tree from Haxe, and the slot is gone --
+     * the menu would open and close in the same frame. Every backend in this
+     * family has now learned this once; `pui` keeps "open" in its store under
+     * the view's path, and this is that.
+     */
+    private val openPickers = mutableStateMapOf<String, Boolean>()
+
+    fun pickerOpen(path: String): Boolean = openPickers[path] ?: false
+
+    fun setPickerOpen(path: String, open: Boolean) {
+        openPickers[path] = open
     }
 }
 
@@ -455,6 +483,51 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
                 valueRange = lo..(if (hi > lo) hi else lo + 0.0001f),
                 modifier = mod
             )
+        }
+
+        // A drop-down: the label, the option chosen, and the list when it is
+        // open. Material's DropdownMenu is a popup, so the list is already
+        // outside the row -- the thing `pui` had to build an overlay layer for.
+        "Picker" -> {
+            val options = node.pickerOptions
+            val at = node.pickerIndex
+            Row(
+                modifier = mod.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                val label = node.pickerLabel
+                if (label.isNotEmpty()) {
+                    Text(text = label, modifier = Modifier.weight(1f))
+                }
+                Box {
+                    TextButton(onClick = { DynamicHost.setPickerOpen(path, true) }) {
+                        Text(if (at >= 0 && at < options.size) options[at] else "")
+                        Icon(
+                            imageVector = Icons.Filled.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = DynamicHost.pickerOpen(path),
+                        onDismissRequest = { DynamicHost.setPickerOpen(path, false) }
+                    ) {
+                        options.forEachIndexed { index, option ->
+                            DropdownMenuItem(
+                                text = { Text(option) },
+                                onClick = {
+                                    DynamicHost.setPickerOpen(path, false)
+                                    // Only a change is a choice. nui's canon
+                                    // says a renderer never reports a selection
+                                    // it made itself, and choosing again what is
+                                    // already chosen is not something to report.
+                                    if (index != at) node.setPickerIndex(index)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // A Spacer reached outside a Column/Row has nothing to share space

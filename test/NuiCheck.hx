@@ -381,8 +381,108 @@ class NuiCheck {
 		check("and it keeps one identity across the questions asked about it",
 			bs.childAt(bare, 0) == bs.childAt(bare, 0));
 
+		// --- a drop-down, in aui's own tree ---
+		var transition = new State<Int>(0, "transition");
+		var picker = new aui.ui.Picker("Transition", ["Cut", "Mix", "Wipe"], transition);
+		check("a picker reads its label", ViewNodeBridge.pickerLabel(picker) == "Transition");
+		check("and its options", ViewNodeBridge.pickerOptionCount(picker) == 3
+			&& ViewNodeBridge.pickerOption(picker, 1) == "Mix");
+		check("an option past the end is empty, not a crash",
+			ViewNodeBridge.pickerOption(picker, 9) == "");
+		ViewNodeBridge.setPickerIndex(picker, 2);
+		check("choosing reaches the state", transition.get() == 2, Std.string(transition.get()));
+		check("and reads back through the bridge", ViewNodeBridge.pickerIndex(picker) == 2);
+
+		var unbound = new aui.ui.Picker("Sans état", ["a"]);
+		ViewNodeBridge.setPickerIndex(unbound, 0);
+		check("a picker with no state does not throw",
+			ViewNodeBridge.pickerIndex(unbound) == -1);
+
+		checkForeign();
+
 		Sys.println(failures == 0 ? "\nall good" : '\n$failures failed');
 		Sys.exit(failures == 0 ? 0 : 1);
+	}
+
+	/**
+		What the four editable controls do when the tree came from somewhere else.
+
+		This is the case a probe measured before it was fixed, and every answer
+		here was wrong: a received toggle flipped on screen and reported nothing,
+		a received slider read 0 whatever it had been sent, and a picker had no
+		bridge at all. `stateOf` returns null for a foreign tree — correctly, the
+		cells stayed with the application serving it — and the write simply went
+		nowhere, in silence.
+
+		The trees a `pui` panel receives are these, and the same hole was found
+		there by the Farceur session. Written here as a **local** foreign tree,
+		where the callbacks are still closures: a tree that crossed a wire turns
+		every one of them into a string callback, which is the shape that hid the
+		defect in `pui` when it was tested only over the wire.
+	**/
+	static function checkForeign():Void {
+		Sys.println("");
+		Sys.println("  -- a tree from somewhere else --");
+
+		var lit = false;
+		var level = 0.0;
+		var typed = "";
+		var chose = -1;
+
+		var root = new nui.Node("VStack");
+		var toggle = new nui.Node("Toggle")
+			.prop("label", PString("Tally"))
+			.prop("isOn", PBool(true))
+			.prop("onToggle", PCallbackBool(on -> lit = on));
+		var slider = new nui.Node("Slider")
+			.prop("min", PFloat(0))
+			.prop("max", PFloat(1))
+			.prop("value", PFloat(0.42))
+			.prop("onValue", PCallbackFloat(v -> level = v));
+		var field = new nui.Node("TextInput")
+			.prop("text", PString("hello"))
+			.prop("onText", PCallbackString(s -> typed = s));
+		var picker = new nui.Node("Picker")
+			.prop("label", PString("Transition"))
+			.prop("selectedIndex", PInt(1))
+			.prop("onSelect", PCallbackInt(at -> chose = at));
+		for (option in ["Cut", "Mix", "Wipe"])
+			picker.child(new nui.Node("Text").prop("text", PString(option)));
+		root.child(toggle).child(slider).child(field).child(picker);
+
+		ViewNodeBridge.readThrough(new nui.SelfSource(() -> root));
+
+		check("a received toggle reads its value", ViewNodeBridge.toggleValue(toggle) == true);
+		ViewNodeBridge.setToggleValue(toggle, false);
+		check("and reports the flip", lit == false && ViewNodeBridge.toggleValue(toggle) == true,
+			"reported " + lit);
+
+		check("a received slider reads its value", ViewNodeBridge.sliderValue(slider) == 0.42,
+			Std.string(ViewNodeBridge.sliderValue(slider)));
+		ViewNodeBridge.setSliderValue(slider, 0.9);
+		check("and reports a drag", level == 0.9, Std.string(level));
+
+		check("a received field reads its text", ViewNodeBridge.fieldText(field) == "hello");
+		ViewNodeBridge.setFieldText(field, "bonsoir");
+		check("and reports an edit", typed == "bonsoir", typed);
+
+		check("a received picker reads its label",
+			ViewNodeBridge.pickerLabel(picker) == "Transition");
+		check("and its options, which are its Text children",
+			ViewNodeBridge.pickerOptionCount(picker) == 3
+			&& ViewNodeBridge.pickerOption(picker, 2) == "Wipe");
+		check("and which one is chosen", ViewNodeBridge.pickerIndex(picker) == 1);
+		ViewNodeBridge.setPickerIndex(picker, 0);
+		check("and reports a choice", chose == 0, Std.string(chose));
+
+		// The node's own value is untouched by any of this: what the screen
+		// shows next is whatever the sender says next, which is the whole
+		// point of a tree that arrives as data.
+		check("nothing wrote back into the received tree",
+			ViewNodeBridge.toggleValue(toggle) == true && ViewNodeBridge.pickerIndex(picker) == 1);
+
+		ViewNodeBridge.readThrough(null);
+		check("the screen goes back to the application", !ViewNodeBridge.reading());
 	}
 }
 

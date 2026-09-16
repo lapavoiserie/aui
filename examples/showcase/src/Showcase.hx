@@ -10,6 +10,7 @@ import aui.ui.Divider;
 import aui.ui.Toggle;
 import aui.ui.TextField;
 import aui.ui.Slider;
+import aui.ui.Picker;
 import aui.ui.ScrollView;
 import aui.ui.Section;
 import aui.ui.ConditionalView;
@@ -23,6 +24,7 @@ class Showcase extends App {
 	@:state var darkMode:Bool = false;
 	@:state var name:String = "";
 	@:state var sliderVal:Float = 0.5;
+	@:state var transition:Int = 0;
 
 	public function new() {
 		super();
@@ -56,6 +58,10 @@ class Showcase extends App {
 				]),
 				new Section("Toggle", [
 					new Toggle("Dark Mode", darkMode_)
+				]),
+				new Section("Picker", [
+					new Picker("Transition", ["Cut", "Mix", "Wipe", "Stinger"], transition_),
+					Text.withState("Chosen: {transition}")
 				]),
 				new Section("Alert", [
 					new Button("Show Alert", showAlert_.tog())

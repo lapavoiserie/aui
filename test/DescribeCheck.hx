@@ -141,6 +141,21 @@ class DescribeCheck extends App {
 		check("a Button sends its icon's name", PropValueTools.asString(take.props.get("icon")) == "swap");
 		check("and one without an icon sends none", !aui.nui.Describe.describe(new aui.ui.Button("Go")).props.exists("icon"));
 
+		// --- A drop-down, whose options become children on the way out ---
+		var transition = new aui.state.State<Int>(1, "transition");
+		var picked = aui.nui.Describe.describe(
+			new aui.ui.Picker("Transition", ["Cut", "Mix", "Wipe"], transition));
+		check("a Picker carries its label and the index chosen", picked.type == "Picker"
+			&& PropValueTools.asString(picked.props.get("label")) == "Transition"
+			&& PropValueTools.asInt(picked.props.get("selectedIndex")) == 1);
+		check("its options cross as one Text child each", picked.children.length == 3
+			&& PropValueTools.asString(picked.children[2].props.get("text")) == "Wipe");
+		switch (PropValueTools.resolve(picked.props.get("onSelect"))) {
+			case PCallbackInt(fn): fn(2);
+			case _:
+		}
+		check("and a choice made elsewhere reaches the cell", transition.get() == 2);
+
 		Sys.println(fails == 0 ? "\nall good" : '\n$fails failed');
 		Sys.exit(fails == 0 ? 0 : 1);
 	}

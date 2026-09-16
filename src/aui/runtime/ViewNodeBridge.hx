@@ -426,8 +426,54 @@ class ViewNodeBridge {
 	}
 
 	public static function setFieldText(node:Dynamic, value:String):Void {
+		if (report(node, "onText", value)) return;
 		var st = stateOf(node, "textState");
 		if (st != null) st.set(value);
+	}
+
+	/**
+		Hand a value the finger just produced to whatever the node carries.
+
+		A received tree has no cells — they stayed with the application that
+		serves it, which is the whole model — so `stateOf` answers null and the
+		write had nowhere to land. It landed nowhere: a toggle in a tree from
+		elsewhere flipped on screen and told nobody, a slider read 0 whatever it
+		had been sent, and neither said so. The same family of holes the Farceur
+		session found in `pui`; measured here with a probe before being fixed.
+
+		The value is handed over rather than `invokeAction` being called, and
+		that difference is the point: `nui.SelfSource.invokeAction` reads the
+		node's **current** prop, which is what the last frame said and not what
+		the finger did.
+
+		A tree that crossed a wire carries a string callback whatever the
+		control is, so numbers are stringified and not `cast` — `pui` paid for
+		that one: a Float in a slot typed String reaches `Std.parseFloat`, which
+		answers NaN, and every received slider reported nothing.
+	**/
+	static function report(node:Dynamic, key:String, value:Dynamic):Bool {
+		if (_foreign == null || node == null) return false;
+		var n:nui.Node = cast node;
+		var carried = nui.PropValue.PropValueTools.resolve(n.props.get(key));
+		if (carried == null) return false;
+		switch (carried) {
+			case PCallback(fn): fn();
+			case PCallbackBool(fn): fn(value == true);
+			case PCallbackFloat(fn): fn(number(value));
+			case PCallbackInt(fn): fn(Std.int(number(value)));
+			case PCallbackString(fn): fn(Std.string(value));
+			case _: return false;
+		}
+		return true;
+	}
+
+	static function number(value:Dynamic):Float {
+		if (value == null) return 0.0;
+		if (Std.isOfType(value, Float) || Std.isOfType(value, Int)) return value;
+		if (value == true) return 1.0;
+		if (value == false) return 0.0;
+		var parsed = Std.parseFloat(Std.string(value));
+		return Math.isNaN(parsed) ? 0.0 : parsed;
 	}
 
 	public static function toggleLabel(node:Dynamic):String {
@@ -446,11 +492,13 @@ class ViewNodeBridge {
 	}
 
 	public static function setToggleValue(node:Dynamic, value:Bool):Void {
+		if (report(node, "onToggle", value)) return;
 		var st = stateOf(node, "isOnState");
 		if (st != null) st.set(value);
 	}
 
 	public static function sliderValue(node:Dynamic):Float {
+		if (_foreign != null) return reader().floatProp(cast node, "value");
 		var st = stateOf(node, "valueState");
 		if (st == null) return 0.0;
 		var v:Dynamic = st.get();
@@ -458,8 +506,63 @@ class ViewNodeBridge {
 	}
 
 	public static function setSliderValue(node:Dynamic, value:Float):Void {
+		if (report(node, "onValue", value)) return;
 		var st = stateOf(node, "valueState");
 		if (st != null) st.set(value);
+	}
+
+	// --- Picker -------------------------------------------------------------
+	//
+	// The options are where the two trees differ: aui's own `Picker` holds an
+	// `Array<String>`, a received one holds a `Text` child per option, which is
+	// what nui's canon says a picker's options are. Both answer the same four
+	// questions, so the renderer never learns which it is drawing.
+
+	public static function pickerLabel(node:Dynamic):String {
+		var borrowed = foreignString(node, "label");
+		if (borrowed != null) return borrowed;
+		node = valueOf(node);
+		if (node == null) return "";
+		var label:Dynamic = Reflect.field(node, "label");
+		return label != null ? Std.string(label) : "";
+	}
+
+	public static function pickerIndex(node:Dynamic):Int {
+		if (_foreign != null) return reader().intProp(cast node, "selectedIndex");
+		var st = stateOf(node, "selectedState");
+		if (st == null) return -1;
+		var v:Dynamic = st.get();
+		return v == null ? -1 : (v : Int);
+	}
+
+	public static function setPickerIndex(node:Dynamic, value:Int):Void {
+		if (report(node, "onSelect", value)) return;
+		var st = stateOf(node, "selectedState");
+		if (st != null) st.set(value);
+	}
+
+	public static function pickerOptionCount(node:Dynamic):Int {
+		if (_foreign != null) return reader().childCount(cast node);
+		var own = options(node);
+		return own == null ? 0 : own.length;
+	}
+
+	public static function pickerOption(node:Dynamic, index:Int):String {
+		if (index < 0) return "";
+		if (_foreign != null) {
+			if (index >= reader().childCount(cast node)) return "";
+			var child = reader().childAt(cast node, index);
+			return child == null ? "" : reader().stringProp(child, "text");
+		}
+		var own = options(node);
+		return own == null || index >= own.length ? "" : own[index];
+	}
+
+	static function options(node:Dynamic):Null<Array<String>> {
+		node = valueOf(node);
+		if (node == null) return null;
+		var list:Dynamic = Reflect.field(node, "options");
+		return list == null ? null : cast list;
 	}
 
 	public static function sliderMin(node:Dynamic):Float {

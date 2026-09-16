@@ -165,6 +165,21 @@ class Describe {
 				}
 				n;
 
+			case "Picker":
+				var p:aui.ui.Picker = cast v;
+				var cell = p.selectedState;
+				// One `Text` child per option, which is what nui's canon says a
+				// picker's options are -- the `Array<String>` this library takes
+				// is the call site's convenience and stops at the boundary.
+				var n = new Node("Picker").prop("label", PString(p.label));
+				for (option in p.options)
+					n.child(new Node("Text").prop("text", PString(option)));
+				if (cell != null) {
+					n.prop("selectedIndex", PInt(cell.get()));
+					n.prop("onSelect", PCallbackInt(at -> cell.set(at)));
+				}
+				n;
+
 			case "ProgressView":
 				var p:aui.ui.ProgressView = cast v;
 				var n = new Node("ProgressView");
