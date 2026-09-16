@@ -104,6 +104,25 @@ class DescribeCheck extends App {
 		}
 		check("a remote toggle write reaches the @:state cell", app.lit == true);
 
+		// --- Pictures and icons, canonical on the wire ---
+		var pictures = aui.nui.Describe.describe(new aui.ui.VStack(null, null, [
+			new aui.mui.Image("asset:logo.png", "Farceur", {width: 120, fit: Cover}),
+			new aui.mui.Icon(MicOff, "Muted"),
+			new aui.mui.Icon(Play)
+		]));
+		var img = pictures.children[0];
+		check("an Image is src, alt, width and fit", img.type == "Image"
+			&& PropValueTools.asString(img.props.get("src")) == "asset:logo.png"
+			&& PropValueTools.asString(img.props.get("alt")) == "Farceur"
+			&& Type.enumEq(img.props.get("width"), PFloat(120))
+			&& PropValueTools.asString(img.props.get("fit")) == "cover"
+			&& !img.props.exists("height"));
+		var mic = pictures.children[1];
+		check("an Icon is its vocabulary name and label", mic.type == "Icon"
+			&& PropValueTools.asString(mic.props.get("name")) == "mic-off"
+			&& PropValueTools.asString(mic.props.get("label")) == "Muted");
+		check("an unlabelled Icon sends no label", !pictures.children[2].props.exists("label"));
+
 		Sys.println(fails == 0 ? "\nall good" : '\n$fails failed');
 		Sys.exit(fails == 0 ? 0 : 1);
 	}

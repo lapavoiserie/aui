@@ -1,13 +1,13 @@
 import aui.App;
 import aui.View;
-import aui.ui.Image;
+import aui.ui.LazyColumn;
 import aui.ui.Text;
 import aui.ui.VStack;
 
 /**
 	Uses a type the dynamic renderer does not draw.
 
-	The `Image` sits in a **helper method**, not in `body()`: a `taskItem(...)`
+	The `LazyColumn` sits in a **helper method**, not in `body()`: a `taskItem(...)`
 	is as much rendering as `body()` is, and not following the check into those
 	would let through exactly what real apps write.
 **/
@@ -21,7 +21,7 @@ class NonCouvert extends App {
 	public static function main() {}
 
 	function illustration():View {
-		return new Image("logo");
+		return new LazyColumn([new Text("row")]);
 	}
 
 	override public function body():View {

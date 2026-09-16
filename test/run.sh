@@ -65,7 +65,7 @@ cover() {
 root=$(pwd)
 failures=0
 cover Couvert    pass              || failures=1
-cover NonCouvert reject Image      || failures=1
+cover NonCouvert reject LazyColumn || failures=1
 
 # A view type the application declared itself: judged like any other, since the
 # check watching only `aui.ui` left users' own nodes to fail silently.

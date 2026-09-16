@@ -1,0 +1,7 @@
+{
+  "appName": "AuiImages",
+  "packageName": "fr.lapavoiserie.aui.images",
+  "minSdk": 24,
+  "targetSdk": 35,
+  "compileSdk": 35
+}

@@ -1,0 +1,15 @@
+# Every icon of the shared vocabulary, and a picture from each source aui loads.
+#   haxelib run aui build
+-cp .
+-cp ../../src
+-lib mui
+-lib kui
+-lib nui
+-lib rui
+-D mui_backend=aui
+-D jvm
+--jvm build/app-logic.jar
+--macro aui.macros.ComposeGenerator.register()
+--macro mui.macros.Bind.all()
+--macro aui.kui.Platform.registerWithKui()
+--main ImagesApp

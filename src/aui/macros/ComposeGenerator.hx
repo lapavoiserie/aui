@@ -2366,7 +2366,16 @@ class ComposeGenerator {
 			} else {
 				Context.warning('[AUI] DynamicComposable.kt not found in aui/runtime/ — the app will not link', Context.currentPos());
 			}
+			// Icons and pictures, which the renderer's Image, Icon and Button
+			// branches draw with.
+			var pictures = locateAuiRuntimeFile("AuiPictures.kt");
+			if (pictures != null) {
+				copyIfNewer(pictures, runtimeDir + "/AuiPictures.kt");
+			} else {
+				Context.warning('[AUI] AuiPictures.kt not found in aui/runtime/ — the app will not link', Context.currentPos());
+			}
 		} else if (FileSystem.exists(rendererOut)) {
+			if (FileSystem.exists(runtimeDir + "/AuiPictures.kt")) FileSystem.deleteFile(runtimeDir + "/AuiPictures.kt");
 			// Left over from a dynamic build. The Haxe half it calls
 			// (aui.runtime.ViewNodeBridge) is only pulled into the jar on the
 			// dynamic path, so leaving this file behind breaks the *static*

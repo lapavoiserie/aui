@@ -319,9 +319,30 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
                 enabled = hasAction,
                 modifier = mod
             ) {
-                Text(node.buttonLabel)
+                // An icon from the shared vocabulary beside the label, or alone
+                // -- then it carries the button's name for TalkBack.
+                val label = node.buttonLabel
+                val iconName = node.property("icon")
+                val icon = if (iconName.isEmpty()) null else AuiIcons.vector(iconName)
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = if (label.isEmpty()) AuiIcons.spoken(iconName) else null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    if (label.isNotEmpty()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(label)
+                    }
+                } else {
+                    Text(label)
+                }
             }
         }
+
+        // The canonical picture and icon: see AuiPictures.kt.
+        "Image" -> AuiImage(node, mod)
+        "Icon" -> AuiIcon(node, mod)
 
         // A card is a surface around its children; nothing more is claimed.
         "Card" -> Card(modifier = mod) {

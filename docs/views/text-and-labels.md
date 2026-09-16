@@ -57,15 +57,28 @@ alone — see [what a write costs](../render-paths.md).
 
 ## Image
 
-Displays an icon. Currently maps to Material Icons.
+A picture, from where its `src` scheme says: `asset:` (the application's
+assets), `data:` (PNG or JPEG), `file:`, `https:`. Decoded off the main thread
+and cached; whatever cannot be drawn shows its `alt` in its place.
 
 ```haxe
-new Image("star")
+new Image("asset:logo.png", "Farceur", {width: 120, fit: Cover})
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| resourceName | `String` | Icon name |
+| src | `String` | Where the picture comes from, by scheme |
+| alt | `String` | What stands in for it, and what a screen reader says |
+| options | `mui.ui.ImageOptions` | `width`, `height` (dp), `fit`: `Contain`, `Cover`, `Fill` |
+
+## Icon
+
+An icon from the shared vocabulary (`nui.Icons`), drawn as its Material icon
+and tinted like text. Names are checked at compile time.
+
+```haxe
+new Icon("mic-off", "Muted")  // or, through mui, Icon(MicOff, "Muted")
+```
 
 ## Divider
 

@@ -196,6 +196,18 @@ class Describe {
 			// insets to honor, so the honest name is the stack it wraps.
 			case "SafeArea": withChildren(new Node("VStack"), v);
 			case "Spacer": new Node("Spacer");
+			case "Image":
+				var img = new Node("Image")
+					.prop("src", PString(Std.string(v.properties.get("src"))))
+					.prop("alt", PString(Std.string(v.properties.get("alt"))));
+				for (key in ["width", "height"])
+					if (v.properties.exists(key)) img.prop(key, PFloat(v.properties.get(key)));
+				if (v.properties.exists("fit")) img.prop("fit", PString(Std.string(v.properties.get("fit"))));
+				img;
+			case "Icon":
+				var icon = new Node("Icon").prop("name", PString(Std.string(v.properties.get("name"))));
+				if (v.properties.exists("label")) icon.prop("label", PString(Std.string(v.properties.get("label"))));
+				icon;
 			case "Divider": new Node("Divider");
 
 			case other:
