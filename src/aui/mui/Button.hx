@@ -9,8 +9,8 @@ package aui.mui;
 	`#if (mui_backend == "aui")` branch it used to live in.
 **/
 class Button extends aui.ui.Button {
-    public function new(label:String, ?action:() -> Void) {
-        super(label);
+    public function new(label:String, ?action:() -> Void, ?icon:mui.ui.IconName) {
+        super(label, null, icon == null ? null : (icon : String));
         if (action != null) {
             onTapGesture(action);
         }
