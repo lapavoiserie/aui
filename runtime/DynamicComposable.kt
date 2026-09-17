@@ -580,22 +580,32 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
         "SafeArea" -> Column(modifier = mod.safeDrawingPadding()) { dynamicChildren(node, path) }
 
         else -> {
-            // A type this renderer does not know.
-            //
-            // **A view written in the app never reaches here.** ComposeGenerator
-            // refuses to compile it, naming the type and the covered set -- a
-            // knowable defect belongs at compile time, not on screen. This branch is for a tree that arrives as **data**,
-            // where nothing could have been checked: the same boundary wui
-            // draws with `Foreign.node`.
-            //
-            // There, naming the type still beats silence -- a container that
-            // keeps its content somewhere other than `children` would otherwise
-            // draw nothing at all, and a blank screen is not a diagnosis.
-            Column(modifier = mod) {
-                if (node.childCount > 0) {
-                    dynamicChildren(node, path)
-                } else {
-                    Text(text = "?" + node.viewType)
+            // A registered native component (`vui`) is looked up first, so a
+            // library can draw a type this renderer never heard of -- and
+            // AFTER every declared type above, so a component can never shadow
+            // one. That lookup is exactly the "?LevelMeter" a panel used to
+            // draw.
+            val component = AuiComponents.find(node.viewType)
+            if (component != null) {
+                component.draw(node, path, mod)
+            } else {
+                // A type nothing here knows.
+                //
+                // **A view written in the app never reaches here.** ComposeGenerator
+                // refuses to compile it, naming the type and the covered set -- a
+                // knowable defect belongs at compile time, not on screen. This branch is for a tree that arrives as **data**,
+                // where nothing could have been checked: the same boundary wui
+                // draws with `Foreign.node`.
+                //
+                // There, naming the type still beats silence -- a container that
+                // keeps its content somewhere other than `children` would otherwise
+                // draw nothing at all, and a blank screen is not a diagnosis.
+                Column(modifier = mod) {
+                    if (node.childCount > 0) {
+                        dynamicChildren(node, path)
+                    } else {
+                        Text(text = "?" + node.viewType)
+                    }
                 }
             }
         }

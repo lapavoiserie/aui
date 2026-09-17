@@ -2470,6 +2470,18 @@ class ComposeGenerator {
 			} else {
 				Context.warning('[AUI] AuiPictures.kt not found in aui/runtime/ — the app will not link', Context.currentPos());
 			}
+
+			// The registry a component library fills, so a node type this
+			// renderer never heard of is drawn rather than shown as "?Name".
+			// Copied whether or not anything registers: the renderer consults
+			// it unconditionally, and a missing file is a link error rather
+			// than a feature quietly absent.
+			var components = locateAuiRuntimeFile("AuiComponents.kt");
+			if (components != null) {
+				copyIfNewer(components, runtimeDir + "/AuiComponents.kt");
+			} else {
+				Context.warning('[AUI] AuiComponents.kt not found in aui/runtime/ — the app will not link', Context.currentPos());
+			}
 		} else if (FileSystem.exists(rendererOut)) {
 			if (FileSystem.exists(runtimeDir + "/AuiPictures.kt")) FileSystem.deleteFile(runtimeDir + "/AuiPictures.kt");
 			// Left over from a dynamic build. The Haxe half it calls
