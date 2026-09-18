@@ -241,6 +241,71 @@ Activity would hold a destroyed screen across a rotation — the leak
 `aui.App.release` exists to close. It is null before the first Activity runs,
 so a capability reading it must say what it does with nothing.
 
+## The vocabulary, and the markup it makes possible
+
+`aui` declares what its controls are, on the controls:
+
+```haxe
+@:node("Toggle")
+class Toggle extends View {
+	@:prop public var label:String;
+	@:prop("isOn", "onToggle") public var isOnState:Null<State<Bool>>;
+}
+```
+
+`nui.macros.Declarations` reads that at compile time — shared by every backend,
+so `aui` says only what is its own (`aui.nui.Vocabulary.DIALECT`).
+`aui.nui.Describe` is **generated** from those declarations, and `mui`'s markup
+is checked against them:
+
+```
+--macro aui.nui.Vocabulary.registerWithMui()
+```
+
+A misspelt attribute names itself and lists what is accepted; a tag nothing
+declares is refused. The `markup` step of `test/run.sh` checks both, compiling
+only — what markup buys is a compile-time check, and running it would need a JVM
+and a bridge stub for a result that adds nothing.
+
+### Two things here are not like the other backends
+
+**`aui` describes and does not build.** Compose draws, in Kotlin, so nothing in
+Haxe ever makes a control out of a node. There are no builders to generate, no
+cell to make from a received value, and the two checks that are about *building*
+do not apply: a read-only property is right for a backend that only reads.
+
+**`aui` has a bag.** Every control writes into a `Map<String, Dynamic>` the
+Kotlin side reads by name, so `Image` and `Icon` have no typed field for a prop
+at all. That is what a renderer in another language needs, not a failure to
+declare things properly, and `@:bag("src:String", "width:Float", …)` says what
+those carry because the map cannot. The rule the reader follows is the same
+everywhere: **the type answers when the field holds the value, and the
+declaration answers only when nothing typed does.**
+
+### What stays hand-written, and why
+
+Describing dispatches by class now, walking up to the nearest declared ancestor
+rather than switching on `viewType`. `aui` was never order-dependent the way
+`cui` and `pui` were — a switch on a string is not a chain of `isOfType` — but a
+name written in a constructor and again in a describer is still a name written
+twice.
+
+Four branches are asked before the declarations, and each says why where it is:
+
+- **`NativeComponent`** — the node is already a node, in the canon of the
+  library that defined it (`vui`'s level meter). It is sent as it was given.
+- **`Button`** — its tap captures the ORIGINAL view, not the resolved copy: the
+  modifier chain with the closure lives on whichever node the tree holds.
+- **`TabView`** — flattened to its first tab, said out loud in a trace. The
+  selection lives on the Kotlin side, per structural path, so the Haxe tree
+  cannot know which tab is showing.
+- **`SafeArea`** — Compose insets handling; the wire has no insets to honour, so
+  the honest name is the stack it wraps.
+
+The line is the same in all four: a declaration says **where the value is**, not
+what to do with it. A flattening, a substitution, an act that is not a field —
+that is code, and it stays readable where it applies.
+
 ## See also
 
 - [Adding a backend](https://lapavoiserie.github.io/mui/#/adding-a-backend) — the
