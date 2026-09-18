@@ -15,7 +15,7 @@ class Text extends View {
 		scale is kept here as well as pushed as a `Font` modifier, which is what
 		the static generator reads off the typed AST.
 	**/
-	public var scale:Null<String>;
+	public var scale:Null<nui.Scale>;
 
 	public var family:Null<String>;
 
@@ -23,7 +23,7 @@ class Text extends View {
 
 	public var italicFace:Null<Bool>;
 
-	public var numbers:Null<String>;
+	public var numbers:Null<nui.Numbers>;
 
 	/**
 		The template as written, `"compteur : {count}"`.
@@ -43,14 +43,15 @@ class Text extends View {
 	}
 
 	/** Say how it is set; Compose decides what it can do with it. **/
-	public function styled(?scale:String, ?family:String, ?weight:Int, ?italic:Bool, tabular:Bool = false):Text {
+	public function styled(?scale:nui.Scale, ?family:String, ?weight:Int, ?italic:Bool, ?tabular:nui.Numbers):Text {
 		// In the properties map as well as the fields, under the canon's own
 		// names: the renderer asks the bridge for "italic", and this class's
 		// field is `italicFace` because `italic()` is a modifier on every view.
 		// A field whose name does not match is a prop the renderer never finds.
 		if (scale != null) {
-			this.scale = nui.TextStyle.scaleOf(scale);
-			properties.set("scale", this.scale);
+			// `nui.Scale` normalised it on the way in, whatever said it.
+			this.scale = scale;
+			properties.set("scale", (this.scale : String));
 		}
 		if (family != null && family != "") {
 			this.family = family;
@@ -65,8 +66,8 @@ class Text extends View {
 			properties.set("italic", italic);
 		}
 		if (tabular) {
-			this.numbers = nui.TextStyle.TABULAR;
-			properties.set("numbers", this.numbers);
+			this.numbers = tabular;
+			properties.set("numbers", (this.numbers : Null<String>));
 		}
 		return this;
 	}
