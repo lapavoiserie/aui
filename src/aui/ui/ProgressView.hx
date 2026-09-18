@@ -3,8 +3,9 @@ package aui.ui;
 import aui.View;
 import aui.state.State;
 
+@:node("ProgressView")
 class ProgressView extends View {
-	public var progressState:Null<State<Float>>;
+	@:prop("value", "onValue") public var progressState:Null<State<Float>>;
 	public var isIndeterminate:Bool;
 
 	public function new(?progressState:State<Float>) {

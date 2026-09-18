@@ -64,6 +64,37 @@ cover() {
 
 root=$(pwd)
 failures=0
+
+markup() {
+	# `ui(<VStack>…)` against aui's own declarations. Compile-only: aui draws
+	# with Compose, so there is nothing to run here without a JVM and a bridge
+	# stub -- and what markup buys is a COMPILE-time check anyway.
+	local common="-cp src -cp test/markup -lib rui -lib nui -lib mui -D mui_backend=aui --macro aui.nui.Vocabulary.registerWithMui()"
+	if haxe $common -main MarkupCheck --interp --no-output 2>/dev/null; then
+		echo "ok   a panel written in markup compiles against aui's declarations"
+	else
+		echo "FAIL the markup panel was refused:"
+		haxe $common -main MarkupCheck --interp --no-output
+		failures=$((failures + 1))
+	fi
+
+	local refused="-cp src -cp test/markup/refused -lib rui -lib nui -lib mui -D mui_backend=aui --macro aui.nui.Vocabulary.registerWithMui()"
+	local said
+	said=$(haxe $refused -main BadAttr --interp --no-output 2>&1)
+	if echo "$said" | grep -q 'n.a pas d.attribut "onTogle"'; then
+		echo "ok   a misspelt attribute is refused, and the message lists what is accepted"
+	else
+		echo "FAIL onTogle was not refused:"; echo "$said"; failures=$((failures + 1))
+	fi
+
+	said=$(haxe $refused -main BadTag --interp --no-output 2>&1)
+	if echo "$said" | grep -q 'Hologramme'; then
+		echo "ok   a tag nothing declares is refused by name"
+	else
+		echo "FAIL Hologramme was not refused:"; echo "$said"; failures=$((failures + 1))
+	fi
+}
+
 cover Couvert    pass              || failures=1
 cover NonCouvert reject LazyColumn || failures=1
 
@@ -123,6 +154,10 @@ else
 	echo "$out" | sed 's/^/         /'
 	failures=1
 fi
+
+echo ""
+echo "== a panel written in mui's markup"
+markup
 
 [ $failures -eq 0 ] || { echo ""; echo "coverage: failed"; exit 1; }
 echo ""

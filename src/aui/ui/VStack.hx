@@ -3,8 +3,10 @@ package aui.ui;
 import aui.View;
 import aui.modifiers.ViewModifier;
 
+@:node("VStack")
+@:content("content")
 class VStack extends View {
-	public var spacing:Null<Float>;
+	@:prop public var spacing:Null<Float>;
 	public var alignment:HorizontalAlignment;
 
 	public function new(?alignment:HorizontalAlignment, ?spacing:Float, content:Array<View>) {

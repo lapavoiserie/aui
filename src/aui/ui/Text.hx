@@ -2,8 +2,26 @@ package aui.ui;
 
 import aui.View;
 
+@:node("Text")
 class Text extends View {
 	public var content:String;
+
+	/**
+		What this text actually says, templates resolved.
+
+		`stateTemplate` carries `{name}` placeholders standing for named cells,
+		and until now only `aui.nui.Describe` knew to expand them. Read from
+		here instead: it is a fact about the text, not about who is asking.
+	**/
+	@:prop("text") public var text(get, never):String;
+
+	function get_text():String {
+		if (stateTemplate == null) return content == null ? "" : content;
+		return ~/\{([^}]+)\}/g.map(stateTemplate, function(r) {
+			var cell:Dynamic = aui.state.State.getByName(r.matched(1));
+			return cell == null ? r.matched(0) : Std.string(cell.get());
+		});
+	}
 	public var composeExpression:Null<String>;
 
 	/**
@@ -15,15 +33,15 @@ class Text extends View {
 		scale is kept here as well as pushed as a `Font` modifier, which is what
 		the static generator reads off the typed AST.
 	**/
-	public var scale:Null<nui.Scale>;
+	@:prop public var scale:Null<nui.Scale>;
 
-	public var family:Null<String>;
+	@:prop public var family:Null<String>;
 
-	public var weight:Null<Int>;
+	@:prop public var weight:Null<Int>;
 
-	public var italicFace:Null<Bool>;
+	@:prop("italic") public var italicFace:Null<Bool>;
 
-	public var numbers:Null<nui.Numbers>;
+	@:prop public var numbers:Null<nui.Numbers>;
 
 	/**
 		The template as written, `"compteur : {count}"`.

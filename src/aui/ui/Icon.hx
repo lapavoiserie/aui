@@ -7,6 +7,8 @@ import aui.View;
 	and tinted like text (`AuiIcons` in `runtime/AuiPictures.kt`). A name aui has
 	no icon for draws its label, as text.
 **/
+@:node("Icon")
+@:bag("name:String", "label:String")
 class Icon extends View {
 	public function new(name:String, ?label:String) {
 		super();

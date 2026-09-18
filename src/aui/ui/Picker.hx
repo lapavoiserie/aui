@@ -13,10 +13,12 @@ import aui.state.State;
 	on the way out, and the dynamic renderer reads them back the same way, so a
 	tree that crosses a wire is the canon's and not this library's convenience.
 **/
+@:node("Picker")
 class Picker extends View {
-	public var label:String;
-	public var options:Array<String>;
-	public var selectedState:Null<State<Int>>;
+	@:prop public var label:String;
+	/** One `Text` child per option, as the canon says. **/
+	@:children("Text", "text") public var options:Array<String>;
+	@:prop("selectedIndex", "onSelect") public var selectedState:Null<State<Int>>;
 
 	public function new(label:String, options:Array<String>, ?selectedState:State<Int>) {
 		super();

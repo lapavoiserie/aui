@@ -103,23 +103,37 @@ class Describe {
 		return false;
 	}
 
+	/**
+		The describer for a view's class, or its nearest declared ancestor's.
+
+		A walk up the chain rather than a `switch` on `viewType`, which is a
+		string a constructor happens to set. It answered well here -- `aui` was
+		never order-dependent the way the others were -- but a name written in
+		two places is still a name written in two places, and the class is the
+		thing that cannot disagree with itself.
+	**/
+	static function declaredFor(view:View):Null<View->Node> {
+		var cls = Type.getClass(view);
+		while (cls != null) {
+			var found = Derived.DESCRIBERS.get(Type.getClassName(cls));
+			if (found != null) return found;
+			cls = cast Type.getSuperClass(cls);
+		}
+		return null;
+	}
+
 	static function node(view:View):Node {
 		// The truth lives behind the LiveProps thunk; the constructed node
 		// holds neutral values. Resolve first, always.
 		var v = ViewSource.resolveValue(view);
 		if (v == null) return new Node("VStack");
 
+		// Three views are not vocabulary, and each says why; everything else is
+		// generated from what the controls declare -- see aui.nui.Derive.
+		//
+		// Asked BEFORE the declarations, which is the one place order still
+		// matters here: three named exceptions rather than seventeen branches.
 		var out:Node = switch (v.viewType) {
-			case "Text":
-				var t:aui.ui.Text = cast v;
-				var text = new Node("Text").prop("text", PString(sampleText(t)));
-				if (t.scale != null) text.prop("scale", PString(t.scale));
-				if (t.family != null) text.prop("family", PString(t.family));
-				if (t.weight != null) text.prop("weight", PInt(t.weight));
-				if (t.italicFace == true) text.prop("italic", PBool(true));
-				if (t.numbers != null) text.prop("numbers", PString(t.numbers));
-				text;
-
 			case "Button":
 				var b:aui.ui.Button = cast v;
 				// The tap does what the dynamic renderer's tap does: apply the
@@ -132,59 +146,6 @@ class Describe {
 					.prop("onClick", PCallback(() -> invoker.invokeAction(view)));
 				if (b.properties.exists("icon")) button.prop("icon", PString(Std.string(b.properties.get("icon"))));
 				button;
-
-			case "Toggle":
-				var t:aui.ui.Toggle = cast v;
-				var cell = t.isOnState;
-				var n = new Node("Toggle").prop("label", PString(t.label));
-				if (cell != null) {
-					n.prop("isOn", PBool(cell.get()));
-					n.prop("onToggle", PCallbackBool(on -> cell.set(on)));
-				}
-				n;
-
-			case "TextField":
-				var f:aui.ui.TextField = cast v;
-				var cell = f.textState;
-				var n = new Node("TextInput").prop("placeholder", PString(f.placeholder));
-				if (cell != null) {
-					n.prop("text", PString(cell.get()));
-					n.prop("onText", PCallbackString(s -> cell.set(s)));
-				}
-				n;
-
-			case "Slider":
-				var s:aui.ui.Slider = cast v;
-				var cell = s.valueState;
-				var n = new Node("Slider")
-					.prop("min", PFloat(s.min))
-					.prop("max", PFloat(s.max));
-				if (cell != null) {
-					n.prop("value", PFloat(cell.get()));
-					n.prop("onValue", PCallbackFloat(x -> cell.set(x)));
-				}
-				n;
-
-			case "Picker":
-				var p:aui.ui.Picker = cast v;
-				var cell = p.selectedState;
-				// One `Text` child per option, which is what nui's canon says a
-				// picker's options are -- the `Array<String>` this library takes
-				// is the call site's convenience and stops at the boundary.
-				var n = new Node("Picker").prop("label", PString(p.label));
-				for (option in p.options)
-					n.child(new Node("Text").prop("text", PString(option)));
-				if (cell != null) {
-					n.prop("selectedIndex", PInt(cell.get()));
-					n.prop("onSelect", PCallbackInt(at -> cell.set(at)));
-				}
-				n;
-
-			case "ProgressView":
-				var p:aui.ui.ProgressView = cast v;
-				var n = new Node("ProgressView");
-				if (p.progressState != null) n.prop("value", PFloat(p.progressState.get()));
-				n;
 
 			case "TabView":
 				// A snapshot is one picture. aui's tab selection lives on the
@@ -201,43 +162,19 @@ class Describe {
 				}
 				n;
 
-			case "VStack":
-				var stack:aui.ui.VStack = cast v;
-				var n = new Node("VStack");
-				if (stack.spacing != null) n.prop("spacing", PFloat(stack.spacing));
-				withChildren(n, v);
-
-			case "HStack":
-				var stack:aui.ui.HStack = cast v;
-				var n = new Node("HStack");
-				if (stack.spacing != null) n.prop("spacing", PFloat(stack.spacing));
-				withChildren(n, v);
-
-			case "ZStack": withChildren(new Node("ZStack"), v);
-			case "ScrollView": withChildren(new Node("ScrollView"), v);
-			// aui's SafeArea is Compose insets handling; the wire has no
-			// insets to honor, so the honest name is the stack it wraps.
+			// aui's SafeArea is Compose insets handling; the wire has no insets
+			// to honor, so the honest name is the stack it wraps.
 			case "SafeArea": withChildren(new Node("VStack"), v);
-			case "Spacer": new Node("Spacer");
-			case "Image":
-				var img = new Node("Image")
-					.prop("src", PString(Std.string(v.properties.get("src"))))
-					.prop("alt", PString(Std.string(v.properties.get("alt"))));
-				for (key in ["width", "height"])
-					if (v.properties.exists(key)) img.prop(key, PFloat(v.properties.get(key)));
-				if (v.properties.exists("fit")) img.prop("fit", PString(Std.string(v.properties.get("fit"))));
-				img;
-			case "Icon":
-				var icon = new Node("Icon").prop("name", PString(Std.string(v.properties.get("name"))));
-				if (v.properties.exists("label")) icon.prop("label", PString(Std.string(v.properties.get("label"))));
-				icon;
-			case "Divider": new Node("Divider");
 
 			case other:
-				// Loud rather than invisible: the receiving side draws "?Name"
-				// and the name says whose.
-				var dot = other.lastIndexOf(".");
-				withChildren(new Node(dot >= 0 ? other.substr(dot + 1) : other), v);
+				var declared = declaredFor(v);
+				if (declared != null) declared(v);
+				else {
+					// Loud rather than invisible: the receiving side draws
+					// "?Name" and the name says whose.
+					var dot = other.lastIndexOf(".");
+					withChildren(new Node(dot >= 0 ? other.substr(dot + 1) : other), v);
+				}
 		}
 
 		describeModifiers(v, out);
@@ -258,6 +195,14 @@ class Describe {
 			return Std.string(cell.get());
 		});
 	}
+
+	/**
+		Splice a view's children into its node. Called by the generated
+		describers, which know a container's children go here and nothing else
+		about them.
+	**/
+	public static function appendChildren(view:View, out:Node):Node
+		return withChildren(out, view);
 
 	static function withChildren(out:Node, view:View):Node {
 		if (view.children != null) for (child in view.children) {

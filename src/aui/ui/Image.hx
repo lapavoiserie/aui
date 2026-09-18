@@ -10,6 +10,8 @@ import aui.View;
 	`file:`, `https:` -- and `alt` is what stands in its place when it cannot be
 	drawn, and what a screen reader says. See nui's node model.
 **/
+@:node("Image")
+@:bag("src:String", "alt:String", "width:Float", "height:Float", "fit:String")
 class Image extends View {
 	public function new(src:String, ?alt:String, ?options:{?width:Float, ?height:Float, ?fit:String}) {
 		super();
