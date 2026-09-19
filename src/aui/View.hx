@@ -79,12 +79,26 @@ class View {
 
 	// Colors & Effects
 	public function foregroundColor(color:ColorValue):View {
-		modifierChain.push(ForegroundColor(color));
+		var said = aui.nui.Colors.say(color);
+		if (said != null) modifierChain.push(ForegroundColor(said));
+		return this;
+	}
+
+	/** A colour said in `nui`'s words: `Color.role(Danger)` or components. **/
+	public function foregroundSaid(said:nui.Color):View {
+		modifierChain.push(ForegroundColor(said));
 		return this;
 	}
 
 	public function background(color:ColorValue):View {
-		modifierChain.push(Background(color));
+		var said = aui.nui.Colors.say(color);
+		if (said != null) modifierChain.push(Background(said));
+		return this;
+	}
+
+	/** A background said in `nui`'s words. See `foregroundSaid`. **/
+	public function backgroundSaid(said:nui.Color):View {
+		modifierChain.push(Background(said));
 		return this;
 	}
 

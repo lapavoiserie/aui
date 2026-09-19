@@ -233,8 +233,9 @@ class Describe {
 				case Font(style): {type: "font", strings: [Std.string(style)]};
 				case Bold: {type: "bold"};
 				case Italic: {type: "italic"};
-				case ForegroundColor(c): {type: "foregroundColor", strings: [Std.string(c)]};
-				case Background(c): {type: "backgroundColor", strings: [Std.string(c)]};
+				// The chain already holds the canon's word -- see aui.nui.Colors.
+				case ForegroundColor(said): {type: nui.Modifiers.FOREGROUND_COLOR, strings: [said]};
+				case Background(said): {type: nui.Modifiers.BACKGROUND_COLOR, strings: [said]};
 				case Opacity(v): {type: "opacity", floats: [v]};
 				case CornerRadius(r): {type: "cornerRadius", floats: [r]};
 				case Border(c, w): {type: "border", strings: [Std.string(c)], floats: w == null ? [] : [w]};

@@ -306,6 +306,38 @@ The line is the same in all four: a declaration says **where the value is**, not
 what to do with it. A flattening, a substitution, an act that is not a field —
 that is code, and it stays readable where it applies.
 
+## Colour
+
+A `nui.Color` is a word — `role:danger` or `#c8323c` — and `aui` puts that word
+in its own modifier chain, so both consumers get the same thing: the Compose
+bridge that hands modifiers to Kotlin, and the describer that puts them on the
+wire.
+
+**A role resolves in Compose**, against `MaterialTheme.colorScheme` — which is
+where a Material accent actually lives, and which on Android 12 and up is built
+from the person's own wallpaper. `accent` is `primary`, `danger` is `error`,
+`border` is `outline`, and so on for the eight. A number chosen by whoever sent
+the tree would be a number chosen for a screen it cannot see.
+
+**A named `ColorValue` leaves as components.** `Gray` becomes `#808080`: a name
+resolves to nothing per-platform, and carrying it would make it look semantic
+when it is not. `Primary`, `Secondary` and `Accent` are the three that *are*
+about a purpose, and they cross as roles. `Transparent` adds no modifier at all
+— one asking for nothing is not a modifier.
+
+An application may also say a role outright:
+
+```haxe
+new Text("STREAM").backgroundSaid(nui.Color.role(Danger));
+```
+
+### What this corrected
+
+`aui` had **no colour pipeline at all**. The Haxe side described a colour as
+`Std.string` of its enum value — `Custom(#c8323c)` on the wire, `Gray` to Kotlin
+— and the Compose renderer's `applyModifiers` handled padding, opacity and the
+fill-max family and nothing else. A colour set on a view was simply never drawn.
+
 ## See also
 
 - [Adding a backend](https://lapavoiserie.github.io/mui/#/adding-a-backend) — the

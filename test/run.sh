@@ -156,6 +156,17 @@ else
 fi
 
 echo ""
+echo "== what a colour says on the way out"
+# On the JVM with the state-bridge stub, like the other Haxe-side checks here:
+# `aui.state.StateBridge` is Kotlin, and the interpreter has no such field.
+if haxe -cp src -cp test -lib rui -lib nui -lib mui -main ColourCheck -D jvm --jvm out/colour.jar \
+	&& java -cp "out/colour.jar:test/stubs-classes" haxe.root.ColourCheck; then
+	:
+else
+	failures=1
+fi
+
+echo ""
 echo "== a panel written in mui's markup"
 markup
 

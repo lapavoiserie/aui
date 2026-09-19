@@ -9,6 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+// For nuiColour and the background modifier it feeds.
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -719,6 +722,53 @@ fun isBold(node: ViewNode): Boolean {
 private fun stackSpacing(node: ViewNode) =
     ViewNodeBridge.getFloatProperty(node.handle, "spacing").toFloat().coerceAtLeast(0f).dp
 
+/**
+ * A nui colour, resolved for this device.
+ *
+ * `role:danger` and the seven others resolve against `MaterialTheme.colorScheme`
+ * -- which is where a Material accent actually lives, and which on Android 12
+ * and up is built from the person's own wallpaper. `#rrggbb` and `#rrggbbaa`
+ * are used as they are; the opacity is LAST, as the canon writes it.
+ *
+ * Null for anything else, and null means "leave it alone": a malformed colour
+ * is a typo somebody made, and inventing one for it is a wrong pixel nobody
+ * traces.
+ */
+@Composable
+fun nuiColour(said: String?): Color? {
+    if (said.isNullOrEmpty()) return null
+    val scheme = MaterialTheme.colorScheme
+
+    if (said.startsWith("role:")) {
+        return when (said.substring(5).lowercase()) {
+            "accent" -> scheme.primary
+            "danger" -> scheme.error
+            "warning" -> scheme.tertiary
+            "success" -> scheme.secondary
+            "surface" -> scheme.surface
+            "text" -> scheme.onSurface
+            "muted" -> scheme.onSurfaceVariant
+            "border" -> scheme.outline
+            else -> null
+        }
+    }
+
+    if (!said.startsWith("#")) return null
+    val body = said.substring(1)
+    val full = when (body.length) {
+        3, 4 -> body.map { "$it$it" }.joinToString("")
+        6, 8 -> body
+        else -> return null
+    }
+    val digits = full.lowercase()
+    if (!digits.all { it in "0123456789abcdef" }) return null
+
+    fun byteAt(at: Int) = digits.substring(at, at + 2).toInt(16)
+    // Written without one, a colour is solid.
+    val alpha = if (digits.length == 8) byteAt(6) else 255
+    return Color(byteAt(0), byteAt(2), byteAt(4), alpha)
+}
+
 /** Apply the Haxe modifier chain, in order. */
 @Composable
 fun applyModifiers(node: ViewNode, base: Modifier): Modifier {
@@ -734,6 +784,16 @@ fun applyModifiers(node: ViewNode, base: Modifier): Modifier {
             "PaddingVertical" -> mod.padding(vertical = node.modifierFloat(i).dp)
 
             "Opacity" -> mod.alpha(node.modifierFloat(i).toFloat())
+
+            // A nui colour: `role:danger` or `#c8323c`. A ROLE is resolved
+            // here, against this device's own scheme -- light or dark, and on
+            // Android 12 and up the colours the person's wallpaper gave them.
+            // A number chosen by whoever sent the tree would be a number
+            // chosen for a screen it cannot see.
+            "Background" -> {
+                val colour = nuiColour(node.modifierString(i))
+                if (colour != null) mod.background(colour) else mod
+            }
 
             "FillMaxWidth" -> mod.fillMaxWidth()
             "FillMaxHeight" -> mod.fillMaxHeight()

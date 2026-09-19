@@ -24,8 +24,12 @@ enum ViewModifier {
 	MultilineTextAlignment(alignment:TextAlignment);
 
 	// Colors & Effects
-	ForegroundColor(color:ColorValue);
-	Background(color:ColorValue);
+	// The canon's word, not a `ColorValue`: two consumers read this chain --
+	// the Compose bridge and the describer -- and both used to get
+	// `Std.string` of the enum value, so Kotlin saw `Gray` and the wire saw
+	// `Rgb(200,50,60)`. See `aui.nui.Colors`.
+	ForegroundColor(said:String);
+	Background(said:String);
 	Opacity(value:Float);
 	CornerRadius(radius:Float);
 	ClipShape(shape:ShapeType);
