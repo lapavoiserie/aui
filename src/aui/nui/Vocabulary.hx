@@ -64,16 +64,15 @@ class Vocabulary {
 			// which this backend could not have read back anyway: it
 			// describes, and never builds a view out of one.
 			//
-			// No `decorate` yet. The others hand their chain to the table
-			// their NodeRenderer already reads; `aui` has no such table --
-			// modifiers are a chain on the view, translated by
-			// `ComposeGenerator`. Markup says so by name rather than dropping
-			// a decoration silently.
-			//
 			// Behind `-D mui_views` while the two shapes coexist.
 			#if mui_views
 			viewOf: (tag, given, children, pos) ->
 				nui.macros.Construct.expr(DIALECT, tag, given, children, pos),
+			// The canon's nine onto this backend's chain. What Compose has no
+			// equivalent for is said out loud rather than dropped -- see
+			// `aui.nui.Decorate`.
+			decorate: (view, modifiers, pos) -> macro aui.nui.Decorate.apply($view,
+				[for (__m in ($modifiers : Array<Null<nui.Modifier>>)) if (__m != null) __m]),
 			#end
 		});
 	}
