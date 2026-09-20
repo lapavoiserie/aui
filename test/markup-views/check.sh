@@ -27,13 +27,13 @@ else
 	fails=$((fails + 1))
 fi
 
-# And without the flag it is a node, which is what every other build still
-# gets. Asserted rather than assumed: a check that passed either way would say
-# nothing about which shape came out.
+# Without the flag the same source does not even mean the same thing: the node
+# path wants a Bool where the view path wants the cell. Asserted rather than
+# assumed -- a check that passed either way would say nothing.
 out=$(haxe $common --macro "aui.nui.Vocabulary.registerWithMui()" \
 	-main AuiMarkup -D jvm --jvm /tmp/aui-views.jar --no-output 2>&1)
-if echo "$out" | grep -q "nui.Node should be aui.View"; then
-	echo "ok   and without -D mui_views it is still a node"
+if echo "$out" | grep -q "should be Bool"; then
+	echo "ok   and without -D mui_views the node path wants a value, not a cell"
 else
 	echo "FAIL the flag made no difference:"; echo "$out"; fails=$((fails + 1))
 fi

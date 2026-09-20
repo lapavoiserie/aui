@@ -31,11 +31,6 @@ class Vocabulary {
 		pack: "aui.ui",
 		view: "aui.View",
 		bag: "properties",
-		// For `nui.macros.Construct`, which builds these controls from markup
-		// while compiling. Nothing needed it before: this backend describes
-		// and never builds a view out of a node, so no runtime builder was
-		// ever generated.
-		cells: "aui.nui.Cells",
 		appendChildren: "aui.nui.Describe.appendChildren",
 	};
 
