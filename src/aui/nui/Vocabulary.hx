@@ -31,6 +31,11 @@ class Vocabulary {
 		pack: "aui.ui",
 		view: "aui.View",
 		bag: "properties",
+		// For `nui.macros.Construct`, which builds these controls from markup
+		// while compiling. Nothing needed it before: this backend describes
+		// and never builds a view out of a node, so no runtime builder was
+		// ever generated.
+		cells: "aui.nui.Cells",
 		appendChildren: "aui.nui.Describe.appendChildren",
 	};
 
@@ -55,6 +60,21 @@ class Vocabulary {
 			requiredOf: requiredOf,
 			kindOf: attributeKind,
 			types: () -> [for (type in types().keys()) type],
+			// Markup becomes `new aui.ui.VStack(...)` rather than a node --
+			// which this backend could not have read back anyway: it
+			// describes, and never builds a view out of one.
+			//
+			// No `decorate` yet. The others hand their chain to the table
+			// their NodeRenderer already reads; `aui` has no such table --
+			// modifiers are a chain on the view, translated by
+			// `ComposeGenerator`. Markup says so by name rather than dropping
+			// a decoration silently.
+			//
+			// Behind `-D mui_views` while the two shapes coexist.
+			#if mui_views
+			viewOf: (tag, given, children, pos) ->
+				nui.macros.Construct.expr(DIALECT, tag, given, children, pos),
+			#end
 		});
 	}
 	#else
