@@ -541,6 +541,24 @@ class ViewNodeBridge {
 		if (st != null) st.set(value);
 	}
 
+	/**
+		A canonical `Tabs`' selection, and where a tap on another tab goes.
+
+		Only ever asked of a RECEIVED tree: `aui`'s own tabs report `TabView`
+		and keep their index in `DynamicHost`. The canon makes the selection
+		the application's -- it arrives in the tree and goes home through
+		`onSelect` -- so that a tap somewhere else entirely can bring a tab
+		back, which an index kept beside the tree could never do.
+	**/
+	public static function tabsIndex(node:Dynamic):Int {
+		if (_foreign == null) return 0;
+		return reader().intProp(cast node, "selectedIndex");
+	}
+
+	public static function setTabsIndex(node:Dynamic, value:Int):Void {
+		report(node, "onSelect", value);
+	}
+
 	public static function pickerOptionCount(node:Dynamic):Int {
 		if (_foreign != null) return reader().childCount(cast node);
 		var own = options(node);

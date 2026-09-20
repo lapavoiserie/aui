@@ -148,10 +148,18 @@ class Describe {
 				button;
 
 			case "TabView":
-				// A snapshot is one picture. aui's tab selection lives on the
-				// Kotlin side (per structural path), so the Haxe tree cannot
-				// know which tab is showing: the first is described, said out
-				// loud rather than guessed silently.
+				// NOT described as the canon's `Tabs`, and that is deliberate.
+				// `Tabs` carries `selectedIndex`, and aui's own selection
+				// lives on the Kotlin side keyed by structural path -- the
+				// Haxe tree cannot see it. Describing `Tabs` would mean
+				// sending a selection this side does not know, and a bar
+				// showing the wrong tab is worse than no bar: it looks right.
+				//
+				// So the first page is described, said out loud rather than
+				// guessed silently. A received `Tabs` builds fine
+				// (`DynamicComposable.kt`, the "Tabs" case); it is only this
+				// direction that cannot be honest yet, and it needs the
+				// selection to cross the Kotlin boundary first.
 				trace("aui.nui.Describe: TabView flattened to its first tab");
 				var tabs:Null<Array<aui.ui.Tab>> = ViewSource.tabsOf(v);
 				var n = new Node("VStack");

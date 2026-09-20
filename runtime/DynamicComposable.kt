@@ -112,6 +112,8 @@ value class ViewNode(val handle: Any) {
     fun setToggleValue(value: Boolean) = ViewNodeBridge.setToggleValue(handle, value)
 
     val pickerLabel: String get() = ViewNodeBridge.pickerLabel(handle)
+    val tabsIndex: Int get() = ViewNodeBridge.tabsIndex(handle)
+    fun setTabsIndex(value: Int) = ViewNodeBridge.setTabsIndex(handle, value)
     val pickerIndex: Int get() = ViewNodeBridge.pickerIndex(handle)
     fun setPickerIndex(value: Int) = ViewNodeBridge.setPickerIndex(handle, value)
     val pickerOptionCount: Int get() = ViewNodeBridge.pickerOptionCount(handle)
@@ -439,6 +441,41 @@ fun DynamicView(node: ViewNode, modifier: Modifier = Modifier, path: String = ""
         // Tabs: the bar comes from the titles, the pages are the children. A
         // `Tab` is not a view and never reaches here as a node -- the source
         // reports each tab's *content* as a child.
+        // The canon's tabs. `TabView` below is aui's OWN control, whose index
+        // lives in `DynamicHost`; a received `Tabs` had no case at all and
+        // landed in the unknown-type branch, so a tab bar sent from anywhere
+        // else simply did not appear.
+        //
+        // Its children are `Tab` nodes: the title is the child's own `label`,
+        // and **only the selected one carries a page**, as its single child.
+        // The selection is the application's, so it comes from the tree and
+        // goes back through `onSelect` rather than living here.
+        "Tabs" -> {
+            val count = node.childCount
+            val selected = node.tabsIndex
+            Column(modifier = mod) {
+                if (count > 0) {
+                    TabRow(selectedTabIndex = selected.coerceIn(0, count - 1)) {
+                        for (i in 0 until count) {
+                            androidx.compose.material3.Tab(
+                                selected = i == selected,
+                                // Only a change is a choice: a renderer never
+                                // reports a selection it made itself.
+                                onClick = { if (i != selected) node.setTabsIndex(i) },
+                                text = { Text(node.child(i).property("label")) }
+                            )
+                        }
+                    }
+                    val shown = node.child(selected.coerceIn(0, count - 1))
+                    // An unselected tab has no page, and the selected one may
+                    // not have arrived yet. Nothing is the honest answer.
+                    if (shown.childCount > 0) {
+                        DynamicView(shown.child(0), path = "$path/tab$selected")
+                    }
+                }
+            }
+        }
+
         "TabView" -> {
             val count = node.childCount
             val selected = DynamicHost.tabIndex(path)
