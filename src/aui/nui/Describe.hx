@@ -148,18 +148,26 @@ class Describe {
 				button;
 
 			case "TabView":
-				// NOT described as the canon's `Tabs`, and that is deliberate.
-				// `Tabs` carries `selectedIndex`, and aui's own selection
-				// lives on the Kotlin side keyed by structural path -- the
-				// Haxe tree cannot see it. Describing `Tabs` would mean
-				// sending a selection this side does not know, and a bar
-				// showing the wrong tab is worse than no bar: it looks right.
+				// NOT described as the canon's `Tabs`, and the reason is
+				// smaller and worse than "a boundary is in the way", which is
+				// what this comment said first.
 				//
-				// So the first page is described, said out loud rather than
-				// guessed silently. A received `Tabs` builds fine
-				// (`DynamicComposable.kt`, the "Tabs" case); it is only this
-				// direction that cannot be honest yet, and it needs the
-				// selection to cross the Kotlin boundary first.
+				// `aui.ui.TabView(tabs)` has **no selection at all**. Not one
+				// kept somewhere awkward -- none: whoever draws it invents
+				// one and keeps it beside the tree. `Tabs` carries
+				// `selectedIndex`, so describing one would mean sending a
+				// number this side does not have, and a bar showing the wrong
+				// tab is worse than no bar because it looks right.
+				//
+				// That is exactly the defect the canon names -- "a selection
+				// living inside the control could not be reached" from
+				// elsewhere -- and the fix is the one `cui.ui.Tabs` just got:
+				// the application owns the selection, and the tabs are views
+				// rather than a typedef. It is an API change to this control
+				// and to what `ComposeGenerator` emits for it, so it is real
+				// work rather than a line, and it is NOT blocked.
+				//
+				// A received `Tabs` builds fine (`DynamicComposable.kt`).
 				trace("aui.nui.Describe: TabView flattened to its first tab");
 				var tabs:Null<Array<aui.ui.Tab>> = ViewSource.tabsOf(v);
 				var n = new Node("VStack");
