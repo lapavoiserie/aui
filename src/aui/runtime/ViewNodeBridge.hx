@@ -129,10 +129,10 @@ class ViewNodeBridge {
 	}
 
 	/** Re-evaluate the tree that is drawing — the app's `body()`, or whatever
-		foreign source was installed. **/
+		received source was installed. **/
 	public static function rebuild():Void {
-		if (_foreign != null) {
-			_foreign.rebuild();
+		if (_received != null) {
+			_received.rebuild();
 			return;
 		}
 		if (_primary != null) _primary.rebuild();
@@ -164,18 +164,28 @@ class ViewNodeBridge {
 		Pass `null` to hand the screen back.
 	**/
 	public static function readThrough(source:Null<nui.SelfSource>):Void {
-		_foreign = source;
+		_received = source;
 	}
 
-	/** Whether a foreign source is drawing. **/
+	/** Whether a received source is drawing. **/
 	public static function reading():Bool
-		return _foreign != null;
+		return _received != null;
 
 	// Typed as `SelfSource` rather than the bare contract, because aui draws
 	// exactly two things: its own views, or a tree that arrived as `nui.Node`.
 	// Naming the second is what lets the handful of accessors outside the pull
 	// contract keep answering instead of shrugging.
-	static var _foreign:Null<nui.SelfSource> = null;
+	/**
+		The tree this bridge is answering about, when it is not our own.
+
+		**Received**, not "foreign": `sui.nui.Received` already had the word,
+		and two names for one side is how two backends come to answer the same
+		question differently. The node model names three origins -- written,
+		assembled, received -- and this is the third: a tree that arrived as
+		data, where nothing could have been checked in advance and a backend
+		honours what it can and says what it skips.
+	**/
+	static var _received:Null<nui.SelfSource> = null;
 
 	// --- Accessors called from Kotlin -------------------------------------
 	//
@@ -184,14 +194,14 @@ class ViewNodeBridge {
 	// its caches and classify attribution.
 
 	static function reader():nui.NodeSource<Dynamic> {
-		if (_foreign != null) return _foreign;
+		if (_received != null) return _received;
 		if (_primary != null) return _primary.source;
 		if (_orphan == null) _orphan = new ViewSource(null);
 		return _orphan;
 	}
 
 	public static function getRoot():Dynamic {
-		if (_foreign != null) return _foreign.root();
+		if (_received != null) return _received.root();
 		return _primary == null ? null : _primary.rootHandle();
 	}
 
@@ -244,8 +254,8 @@ class ViewNodeBridge {
 		The pull contract cannot express an optional parameter yet.
 	**/
 	public static function modifierHasParam(node:Dynamic, index:Int, param:Int):Bool {
-		var foreign = _foreign;
-		if (foreign != null) return foreign.modifierHasParam(cast node, index, param);
+		var received = _received;
+		if (received != null) return received.modifierHasParam(cast node, index, param);
 		var mine = own();
 		return mine == null ? false : mine.modifierHasParam(cast node, index, param);
 	}
@@ -294,20 +304,20 @@ class ViewNodeBridge {
 		These four accessors reach into an `aui.View` field by reflection
 		rather than going through the source, which is right for aui's own
 		views — `LiveProps` defers their values and `resolveValue` is what
-		un-defers them — and fatal for a foreign tree: the cast throws
+		un-defers them — and fatal for a received tree: the cast throws
 		`ClassCastException` at the first Text drawn.
 
 		A received tree carries the CANONICAL prop names, which is what
 		`Describe` emits and what every sink already agrees on, so the same
 		question has a plain answer through the contract.
 	**/
-	static function foreignString(node:Dynamic, key:String):Null<String> {
-		var foreign = _foreign;
-		return foreign == null ? null : foreign.stringProp(cast node, key);
+	static function receivedString(node:Dynamic, key:String):Null<String> {
+		var received = _received;
+		return received == null ? null : received.stringProp(cast node, key);
 	}
 
 	public static function getText(node:Dynamic):String {
-		var borrowed = foreignString(node, "text");
+		var borrowed = receivedString(node, "text");
 		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
@@ -355,7 +365,7 @@ class ViewNodeBridge {
 	}
 
 	public static function getButtonLabel(node:Dynamic):String {
-		var borrowed = foreignString(node, "label");
+		var borrowed = receivedString(node, "label");
 		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
@@ -372,7 +382,7 @@ class ViewNodeBridge {
 
 	// The three questions below are aui's own, not the shared contract's: they
 	// ask about `TabView` and `ConditionalView`, which are aui view classes.
-	// A foreign tree has neither -- a `ConditionalView` is resolved before it
+	// A received tree has neither -- a `ConditionalView` is resolved before it
 	// is ever described, so what arrives over a wire is the branch that won.
 	// Hence `own()` rather than `reader()`, and a neutral answer when somebody
 	// else is drawing.
@@ -389,21 +399,21 @@ class ViewNodeBridge {
 
 	public static function conditionValue(node:Dynamic):Bool {
 		var mine = own();
-		// True, not false: a conditional the renderer asks about in a foreign
+		// True, not false: a conditional the renderer asks about in a received
 		// tree is one that already resolved, so its content is meant to show.
 		return mine == null ? true : mine.conditionValue(cast node);
 	}
 
-	/** aui's own source, or `null` while a foreign one is drawing. **/
+	/** aui's own source, or `null` while a received one is drawing. **/
 	static function own():Null<ViewSource> {
-		if (_foreign != null) return null;
+		if (_received != null) return null;
 		if (_primary != null) return _primary.source;
 		if (_orphan == null) _orphan = new ViewSource(null);
 		return _orphan;
 	}
 
 	public static function fieldPlaceholder(node:Dynamic):String {
-		var borrowed = foreignString(node, "placeholder");
+		var borrowed = receivedString(node, "placeholder");
 		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
@@ -419,7 +429,7 @@ class ViewNodeBridge {
 	// action makes -- so nothing here bypasses the reactive core.
 
 	public static function fieldText(node:Dynamic):String {
-		var borrowed = foreignString(node, "text");
+		var borrowed = receivedString(node, "text");
 		if (borrowed != null) return borrowed;
 		var st = stateOf(node, "textState");
 		return st == null ? "" : Std.string(st.get());
@@ -452,7 +462,7 @@ class ViewNodeBridge {
 		answers NaN, and every received slider reported nothing.
 	**/
 	static function report(node:Dynamic, key:String, value:Dynamic):Bool {
-		if (_foreign == null || node == null) return false;
+		if (_received == null || node == null) return false;
 		var n:nui.Node = cast node;
 		var carried = nui.PropValue.PropValueTools.resolve(n.props.get(key));
 		if (carried == null) return false;
@@ -477,7 +487,7 @@ class ViewNodeBridge {
 	}
 
 	public static function toggleLabel(node:Dynamic):String {
-		var borrowed = foreignString(node, "label");
+		var borrowed = receivedString(node, "label");
 		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
@@ -486,7 +496,7 @@ class ViewNodeBridge {
 	}
 
 	public static function toggleValue(node:Dynamic):Bool {
-		if (_foreign != null) return reader().boolProp(cast node, "isOn");
+		if (_received != null) return reader().boolProp(cast node, "isOn");
 		var st = stateOf(node, "isOnState");
 		return st == null ? false : st.get() == true;
 	}
@@ -498,7 +508,7 @@ class ViewNodeBridge {
 	}
 
 	public static function sliderValue(node:Dynamic):Float {
-		if (_foreign != null) return reader().floatProp(cast node, "value");
+		if (_received != null) return reader().floatProp(cast node, "value");
 		var st = stateOf(node, "valueState");
 		if (st == null) return 0.0;
 		var v:Dynamic = st.get();
@@ -519,7 +529,7 @@ class ViewNodeBridge {
 	// questions, so the renderer never learns which it is drawing.
 
 	public static function pickerLabel(node:Dynamic):String {
-		var borrowed = foreignString(node, "label");
+		var borrowed = receivedString(node, "label");
 		if (borrowed != null) return borrowed;
 		node = valueOf(node);
 		if (node == null) return "";
@@ -528,7 +538,7 @@ class ViewNodeBridge {
 	}
 
 	public static function pickerIndex(node:Dynamic):Int {
-		if (_foreign != null) return reader().intProp(cast node, "selectedIndex");
+		if (_received != null) return reader().intProp(cast node, "selectedIndex");
 		var st = stateOf(node, "selectedState");
 		if (st == null) return -1;
 		var v:Dynamic = st.get();
@@ -551,7 +561,7 @@ class ViewNodeBridge {
 		back, which an index kept beside the tree could never do.
 	**/
 	public static function tabsIndex(node:Dynamic):Int {
-		if (_foreign == null) return 0;
+		if (_received == null) return 0;
 		return reader().intProp(cast node, "selectedIndex");
 	}
 
@@ -560,14 +570,14 @@ class ViewNodeBridge {
 	}
 
 	public static function pickerOptionCount(node:Dynamic):Int {
-		if (_foreign != null) return reader().childCount(cast node);
+		if (_received != null) return reader().childCount(cast node);
 		var own = options(node);
 		return own == null ? 0 : own.length;
 	}
 
 	public static function pickerOption(node:Dynamic, index:Int):String {
 		if (index < 0) return "";
-		if (_foreign != null) {
+		if (_received != null) {
 			if (index >= reader().childCount(cast node)) return "";
 			var child = reader().childAt(cast node, index);
 			return child == null ? "" : reader().stringProp(child, "text");
@@ -594,14 +604,14 @@ class ViewNodeBridge {
 	/**
 		A state a view holds under `field`, or null if it was built without one.
 
-		Always null for a foreign tree, and that is the honest answer rather
+		Always null for a received tree, and that is the honest answer rather
 		than an oversight: a received tree carries VALUES, not cells — the
 		cells stayed with the application that served it, which is the whole
 		model. So an editable control reads its value through the prop below
 		and writes it back by sending an action home.
 	**/
 	static function stateOf(node:Dynamic, field:String):Null<Dynamic> {
-		if (node == null || _foreign != null) return null;
+		if (node == null || _received != null) return null;
 		var st:Dynamic = Reflect.field(node, field);
 		return st;
 	}
