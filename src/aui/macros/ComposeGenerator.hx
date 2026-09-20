@@ -72,6 +72,19 @@ class ComposeGenerator {
 		// mui's own examples and cafos build.
 		if (Context.defined("mui_backend")) Compiler.include("aui.mui");
 
+		// The dynamic renderer's bridge, for the same reason and with the same
+		// shape of failure. `DynamicComposable.kt` calls `ViewNodeBridge` on
+		// every line; nothing in Haxe has to, so an application whose views
+		// never mention it is compiled without it and the Kotlin fails to
+		// resolve a class the jar does not carry -- dozens of "Unresolved
+		// reference 'ViewNodeBridge'", which read as Kotlin mistakes and are
+		// not.
+		//
+		// It surfaced when markup began building controls directly: before
+		// that, every path into this backend happened to drag the bridge in.
+		// "Happened to" is not a guarantee, so it is included here.
+		Compiler.include("aui.runtime");
+
 		// Which renderer this build targets. Asked once, here, so the
 		// deprecation warning a static build earns lands at the top of its
 		// output rather than beside whichever branch happened to run first.
