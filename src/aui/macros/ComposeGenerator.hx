@@ -1295,7 +1295,7 @@ class ComposeGenerator {
 			"offset", "aspectRatio",
 			"font", "bold", "italic", "lineLimit", "multilineTextAlignment",
 			"foregroundColor", "background", "opacity", "cornerRadius",
-			"clipShape", "shadow", "blur", "scaleEffect", "rotationEffect",
+			"clipShape", "clip", "shadow", "blur", "scaleEffect", "rotationEffect",
 			"brightness", "contrast", "saturation", "grayscale",
 			"border", "overlay",
 			"onTapGesture", "onLongPressGesture", "onAppear", "onDisappear",
@@ -2202,8 +2202,21 @@ class ComposeGenerator {
 					return ".aspectRatio(" + ratio + "f)";
 				}
 				return ".aspectRatio(1f)";
+			case "clip":
+				// The canon's `clip`: cut at the edge, no shape and no radius.
+				// A radius belongs to the thing it rounds, and `cornerRadius`
+				// already carries one.
+				return ".clip(RectangleShape)";
 			case "clipShape":
-				// Shape arg is an enum — need to check what shape
+				// KNOWN DEFECT, left as it was: this ignores its shape
+				// argument and rounds every clip by 8.dp, so
+				// `clipShape(Rectangle)` comes out with corners nobody asked
+				// for and a `Circle` comes out a rounded square. Reading a
+				// shape off a `TypedExpr` needs an enum-name extractor this
+				// generator does not have, and writing one blind is how a
+				// generated artifact that compiles as text reaches a screen
+				// wrong. `clip()` above is the case the canon needs and does
+				// not go through here.
 				return ".clip(RoundedCornerShape(8.dp))";
 			case "brightness":
 				return ""; // Compose handles via ColorMatrix — skip for now

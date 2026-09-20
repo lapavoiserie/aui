@@ -239,6 +239,9 @@ class Describe {
 				case Opacity(v): {type: "opacity", floats: [v]};
 				case CornerRadius(r): {type: "cornerRadius", floats: [r]};
 				case Border(c, w): {type: "border", strings: [Std.string(c)], floats: w == null ? [] : [w]};
+				// A rectangle IS the canon's `clip`. The other shapes have no
+				// canon name and keep falling through below.
+				case ClipShape(Rectangle): {type: nui.Modifiers.CLIP};
 				case OnTapGesture(_) | OnLongPressGesture(_): null;
 				case _: null; // no wire form; dropped silently is fine for visuals
 			}

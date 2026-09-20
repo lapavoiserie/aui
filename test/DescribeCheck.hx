@@ -156,6 +156,24 @@ class DescribeCheck extends App {
 		}
 		check("and a choice made elsewhere reaches the cell", transition.get() == 2);
 
+		// The canon's `clip`. `aui` only describes -- it never builds a view
+		// from a node -- so this is the whole of the modifier here, and it was
+		// falling through `case _: null` and crossing as nothing.
+		var cut = new aui.ui.Text("x");
+		cut.clip();
+		var said = aui.nui.Describe.describe(cut);
+		check("a clipped view crosses by the canonical name",
+			[for (m in said.modifiers) m.type].indexOf(nui.Modifiers.CLIP) >= 0);
+
+		// A rectangle is the canon's word; the other shapes are Compose's own
+		// and have none, so they still cross as nothing rather than as a cut
+		// a receiver would make at the wrong edge.
+		var round = new aui.ui.Text("x");
+		round.clipShape(aui.modifiers.ViewModifier.ShapeType.Circle);
+		var roundSaid = aui.nui.Describe.describe(round);
+		check("while a shape the canon cannot name crosses as nothing",
+			[for (m in roundSaid.modifiers) m.type].indexOf(nui.Modifiers.CLIP) < 0);
+
 		Sys.println(fails == 0 ? "\nall good" : '\n$fails failed');
 		Sys.exit(fails == 0 ? 0 : 1);
 	}

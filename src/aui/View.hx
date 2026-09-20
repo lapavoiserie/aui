@@ -117,6 +117,19 @@ class View {
 		return this;
 	}
 
+	/**
+		Cut this view's content at its own edge. `nui.Modifiers.CLIP`.
+
+		A rectangle is what the canon means: a radius belongs to the thing it
+		rounds, and `cornerRadius` already carries one. The other shapes stay
+		`clipShape`'s, and stay Compose's own -- a receiver told "clip" cuts at
+		its edge, which is what a rectangle means and what a capsule does not.
+	**/
+	public function clip():View {
+		modifierChain.push(ClipShape(Rectangle));
+		return this;
+	}
+
 	public function shadow(?color:ColorValue, ?radius:Float, ?x:Float, ?y:Float):View {
 		modifierChain.push(Shadow(color, radius, x, y));
 		return this;
