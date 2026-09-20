@@ -56,7 +56,12 @@ class Decorate {
 					if (f != null && f.length > 0) view.frame(null, f[0]);
 
 				case other:
-					trace("aui.nui.Decorate: no Compose equivalent for " + other);
+					// Unreachable from markup: `Vocabulary.honoured` lists what
+					// this can draw, and `mui`'s markup refuses anything else by
+					// name while compiling. Reaching it means those two lists
+					// disagree, which is a bug and not a decoration to skip.
+					throw "aui.nui.Decorate: asked for \"" + other + "\", which "
+						+ "Vocabulary.honoured does not list";
 			}
 		}
 		return view;
