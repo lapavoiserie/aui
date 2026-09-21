@@ -61,8 +61,21 @@ class Vocabulary {
 			//
 			// Behind `-D mui_views` while the two shapes coexist.
 			#if mui_views
-			viewOf: (tag, given, children, pos) ->
-				nui.macros.Construct.expr(DIALECT, tag, given, children, pos),
+			// Through `LiveProps.live`, as every `new` in a hand-written body()
+			// goes. Its build half wraps the constructors of `body()` as
+			// written, and a markup screen's body holds a call to `ui(...)`
+			// there, not a `new`: the constructors appear only when `ui`
+			// expands. So nothing in any markup screen was deferred, every
+			// displayed value was read while building the tree, and every
+			// cell it read became structural -- a write rebuilt the tree.
+			// Measured: `test/markup-views/AuiLive.hx` said `deferred: false`.
+			// `sui` had the same hole (sui eb70455), found by a slider.
+			// A cell handed to a two-way control is a `State<T>`, not a
+			// displayable value, so `live` never defers it.
+			viewOf: (tag, given, children, pos) -> {
+				var built = nui.macros.Construct.expr(DIALECT, tag, given, children, pos);
+				built == null ? null : macro @:pos(pos) aui.macros.LiveProps.live($built);
+			},
 			// The canon's nine onto this backend's chain. What Compose has no
 			// equivalent for is said out loud rather than dropped -- see
 			// `aui.nui.Decorate`.

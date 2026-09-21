@@ -38,6 +38,30 @@ else
 	echo "FAIL the flag made no difference:"; echo "$out"; fails=$((fails + 1))
 fi
 
+# A button written in markup: the canon's `onClick` closure. aui had no
+# closure-carrying control at all, so `<Button>` was not in its vocabulary.
+# Run on the JVM, through the calls DynamicComposable.kt makes when pressed.
+jar=/tmp/aui-button.jar
+if haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
+		-main AuiButton -D jvm --jvm $jar 2>/dev/null \
+		&& java -jar $jar 2>&1 | grep -q "actionId: 0 | presses: 2"; then
+	echo "ok   a markup Button runs its closure, by node and by action id"
+else
+	echo "FAIL a markup Button did not run its closure:"; java -jar $jar 2>&1 | head -3; fails=$((fails + 1))
+fi
+
+# A displayed value computed from a cell is deferred. It was not, for any
+# markup screen: `LiveProps` wraps the constructors of body() AS WRITTEN, and
+# markup's appear only when ui() expands. Every write rebuilt the tree.
+jar=/tmp/aui-live.jar
+if haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
+		-main AuiLive -D jvm --jvm $jar 2>/dev/null \
+		&& java -jar $jar 2>&1 | grep -q "deferred: true"; then
+	echo "ok   a value markup computes from a cell is deferred, so the cell is not structural"
+else
+	echo "FAIL a markup value was read while building the tree:"; java -jar $jar 2>&1 | head -3; fails=$((fails + 1))
+fi
+
 echo ""
 [ "$fails" -eq 0 ] && echo "all good" || echo "$fails failed"
 exit "$fails"

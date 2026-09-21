@@ -436,7 +436,7 @@ class ViewSource implements NodeSource<View> {
 
 	public function actionId(n:View):Int {
 		n = resolve(n);
-		if (actionOf(n) == null && tapOf(n) == null) return -1;
+		if (actionOf(n) == null && closureOf(n) == null && tapOf(n) == null) return -1;
 		var i = _actions.indexOf(n);
 		if (i >= 0) return i;
 		_actions.push(n);
@@ -447,6 +447,12 @@ class ViewSource implements NodeSource<View> {
 	public function invokeActionId(id:Int):Void {
 		if (id < 0 || id >= _actions.length) return;
 		invokeAction(_actions[id]);
+	}
+
+	/** The closure a `Button` carries in `action`, or null. See `aui.ui.Button`. **/
+	static function closureOf(n:View):Null<Void->Void> {
+		if (n == null || !Std.isOfType(n, aui.ui.Button)) return null;
+		return (cast n : aui.ui.Button).action;
 	}
 
 	static function actionOf(n:View):Null<StateAction> {
@@ -501,10 +507,10 @@ class ViewSource implements NodeSource<View> {
 		// directly — so nothing a person can see waits on the scope.
 		rui.Signal.Scheduler.batch(() -> {
 			var declared = actionOf(n);
-			if (declared != null) {
-				apply(declared);
-				return;
-			}
+			if (declared != null) apply(declared);
+			var own = closureOf(n);
+			if (own != null) own();
+			if (declared != null || own != null) return;
 			var tap = tapOf(n);
 			if (tap != null) tap();
 		});
