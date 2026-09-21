@@ -72,6 +72,8 @@ class Vocabulary {
 			// `sui` had the same hole (sui eb70455), found by a slider.
 			// A cell handed to a two-way control is a `State<T>`, not a
 			// displayable value, so `live` never defers it.
+			// A key written in markup reaches the view. See `mui.macros.Backend.Vocabulary.keyed`.
+			keyed: (view, key, pos) -> macro $view.keyed($key),
 			viewOf: (tag, given, children, pos) -> {
 				var built = nui.macros.Construct.expr(DIALECT, tag, given, children, pos);
 				built == null ? null : macro @:pos(pos) aui.macros.LiveProps.live($built);

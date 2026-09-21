@@ -20,6 +20,27 @@ class View {
 		`null` on the static path, and on containers -- re-running a container's
 		constructor would rebuild its children and discard their identity.
 	**/
+	/**
+		Which sibling this is, when its position does not say.
+
+		`DynamicComposable.kt` wraps every child in Compose's `key(...)`, and
+		that key is positional unless the node carries a `nodeId` -- which, its
+		comment says, is what makes a row that MOVED keep the control someone is
+		typing in. Nothing in an app could set one: `keyOf` answered null
+		because aui's trees had no sibling keys. Now they can.
+
+		`keyed` publishes it as `nodeId`, which is the property the renderer has
+		always read.
+	**/
+	public var key(default, null):Null<String> = null;
+
+	/** Give this view a key, and hand it back. See `key`. **/
+	public function keyed(key:String):View {
+		this.key = key;
+		properties.set("nodeId", key);
+		return this;
+	}
+
 	public var liveBuild:Null<Void->View> = null;
 
 	public function new() {}

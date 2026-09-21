@@ -44,8 +44,8 @@ fi
 jar=/tmp/aui-button.jar
 if haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
 		-main AuiButton -D jvm --jvm $jar 2>/dev/null \
-		&& java -jar $jar 2>&1 | grep -q "actionId: 0 | presses: 2"; then
-	echo "ok   a markup Button runs its closure, by node and by action id"
+		&& java -jar $jar 2>&1 | grep -q "actionId: 0 | presses: 2 | key: a | unkeyed: null"; then
+	echo "ok   a markup Button runs its closure, and a written key reaches the view"
 else
 	echo "FAIL a markup Button did not run its closure:"; java -jar $jar 2>&1 | head -3; fails=$((fails + 1))
 fi
