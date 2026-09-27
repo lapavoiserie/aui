@@ -69,7 +69,11 @@ markup() {
 	# `ui(<VStack>…)` against aui's own declarations. Compile-only: aui draws
 	# with Compose, so there is nothing to run here without a JVM and a bridge
 	# stub -- and what markup buys is a COMPILE-time check anyway.
-	local common="-cp src -cp test/markup -lib rui -lib nui -lib mui -D mui_backend=aui --macro aui.nui.Vocabulary.registerWithMui()"
+	# `-D mui_nodes`: this fixture reads the tree back as `nui.Node` props, and
+	# building this backend's own views is the default since 2026-09-27 -- on
+	# that route there are no props to read and a two-way control takes the
+	# cell, not a value. The views route is checked in `test/markup-views`.
+	local common="-cp src -cp test/markup -lib rui -lib nui -lib mui -D mui_backend=aui -D mui_nodes --macro aui.nui.Vocabulary.registerWithMui()"
 	if haxe $common -main MarkupCheck --interp --no-output 2>/dev/null; then
 		echo "ok   a panel written in markup compiles against aui's declarations"
 	else
@@ -78,7 +82,7 @@ markup() {
 		failures=$((failures + 1))
 	fi
 
-	local refused="-cp src -cp test/markup/refused -lib rui -lib nui -lib mui -D mui_backend=aui --macro aui.nui.Vocabulary.registerWithMui()"
+	local refused="-cp src -cp test/markup/refused -lib rui -lib nui -lib mui -D mui_backend=aui -D mui_nodes --macro aui.nui.Vocabulary.registerWithMui()"
 	local said
 	said=$(haxe $refused -main BadAttr --interp --no-output 2>&1)
 	if echo "$said" | grep -q 'n.a pas d.attribut "onTogle"'; then

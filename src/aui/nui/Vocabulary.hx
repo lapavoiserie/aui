@@ -59,8 +59,18 @@ class Vocabulary {
 			// which this backend could not have read back anyway: it
 			// describes, and never builds a view out of one.
 			//
-			// Behind `-D mui_views` while the two shapes coexist.
-			#if mui_views
+			// **The default since 2026-09-27**, and `-D mui_nodes` is the way
+			// back. It was behind `-D mui_views` while the two shapes
+			// coexisted, on the ground that turning it on by default is a
+			// decision about what markup MEANS rather than a flag to flip
+			// while nobody is looking. That decision is taken: markup is how a
+			// UI is written here, it is checked against this backend's own
+			// declarations, and answering a node the renderer then reads back
+			// was the shape that could not reach half the family.
+			//
+			// `mui_nodes` is for a tree that is going to be SENT -- a Companion
+			// frame, a relayed surface -- where the node IS the point.
+			#if !mui_nodes
 			// Through `LiveProps.live`, as every `new` in a hand-written body()
 			// goes. Its build half wraps the constructors of `body()` as
 			// written, and a markup screen's body holds a call to `ui(...)`

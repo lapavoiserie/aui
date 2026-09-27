@@ -17,23 +17,24 @@ cd "$(dirname "$0")/../.."
 common="-cp src -cp test/markup-views -lib rui -lib nui -lib mui -D mui_backend=aui"
 fails=0
 
-if haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
+if haxe $common --macro "aui.nui.Vocabulary.registerWithMui()" \
 		-main AuiMarkup -D jvm --jvm /tmp/aui-views.jar --no-output 2>/dev/null; then
 	echo "ok   markup builds aui's own controls"
 else
 	echo "FAIL markup did not build aui's own controls:"
-	haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
+	haxe $common --macro "aui.nui.Vocabulary.registerWithMui()" \
 		-main AuiMarkup -D jvm --jvm /tmp/aui-views.jar --no-output
 	fails=$((fails + 1))
 fi
 
-# Without the flag the same source does not even mean the same thing: the node
-# path wants a Bool where the view path wants the cell. Asserted rather than
-# assumed -- a check that passed either way would say nothing.
-out=$(haxe $common --macro "aui.nui.Vocabulary.registerWithMui()" \
+# `-D mui_nodes` is the way back, and the same source does not even mean the
+# same thing there: the node path wants a Bool where the view path wants the
+# cell. Asserted rather than assumed -- a check that passed either way would
+# say nothing, and this one is what proves the default really changed.
+out=$(haxe $common -D mui_nodes --macro "aui.nui.Vocabulary.registerWithMui()" \
 	-main AuiMarkup -D jvm --jvm /tmp/aui-views.jar --no-output 2>&1)
 if echo "$out" | grep -q "should be Bool"; then
-	echo "ok   and without -D mui_views the node path wants a value, not a cell"
+	echo "ok   and with -D mui_nodes the node path wants a value, not a cell"
 else
 	echo "FAIL the flag made no difference:"; echo "$out"; fails=$((fails + 1))
 fi
@@ -42,7 +43,7 @@ fi
 # closure-carrying control at all, so `<Button>` was not in its vocabulary.
 # Run on the JVM, through the calls DynamicComposable.kt makes when pressed.
 jar=/tmp/aui-button.jar
-if haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
+if haxe $common --macro "aui.nui.Vocabulary.registerWithMui()" \
 		-main AuiButton -D jvm --jvm $jar 2>/dev/null \
 		&& java -jar $jar 2>&1 | grep -q "actionId: 0 | presses: 2 | key: a | unkeyed: null"; then
 	echo "ok   a markup Button runs its closure, and a written key reaches the view"
@@ -54,7 +55,7 @@ fi
 # markup screen: `LiveProps` wraps the constructors of body() AS WRITTEN, and
 # markup's appear only when ui() expands. Every write rebuilt the tree.
 jar=/tmp/aui-live.jar
-if haxe $common -D mui_views --macro "aui.nui.Vocabulary.registerWithMui()" \
+if haxe $common --macro "aui.nui.Vocabulary.registerWithMui()" \
 		-main AuiLive -D jvm --jvm $jar 2>/dev/null \
 		&& java -jar $jar 2>&1 | grep -q "deferred: true"; then
 	echo "ok   a value markup computes from a cell is deferred, so the cell is not structural"
